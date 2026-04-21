@@ -9,6 +9,7 @@ bufsitter.config.io.opts	bufsitter.nvim.txt	/*bufsitter.config.io.opts*
 bufsitter.config.opts	bufsitter.nvim.txt	/*bufsitter.config.opts*
 bufsitter.config.ref.opts	bufsitter.nvim.txt	/*bufsitter.config.ref.opts*
 bufsitter.config.scratch.opts	bufsitter.nvim.txt	/*bufsitter.config.scratch.opts*
+bufsitter.config.scratch.win.opts	bufsitter.nvim.txt	/*bufsitter.config.scratch.win.opts*
 bufsitter.contents	bufsitter.nvim.txt	/*bufsitter.contents*
 bufsitter.cursor	bufsitter.nvim.txt	/*bufsitter.cursor*
 bufsitter.cursor.fn	bufsitter.nvim.txt	/*bufsitter.cursor.fn*

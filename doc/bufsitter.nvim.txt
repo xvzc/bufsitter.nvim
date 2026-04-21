@@ -17,13 +17,27 @@ bufsitter.nvim                                                       *bufsitter*
    require("bufsitter").setup()
 <
 
+bufsitter.config.scratch.win.opts            *bufsitter.config.scratch.win.opts*
+
+    Fields: ~
+        {relative?}    (string)
+        {width?}       (number)  Width in columns, or a ratio 0–1 relative to editor width
+        {height?}      (number)  Height in rows, or a ratio 0–1 relative to editor height
+        {min_width?}   (number)  Minimum width in columns, or a ratio 0–1 relative to editor width
+        {min_height?}  (number)  Minimum height in rows, or a ratio 0–1 relative to editor height
+        {row?}         (number)  Top row, or a ratio 0–1 relative to editor height (centered when omitted)
+        {col?}         (number)  Left column, or a ratio 0–1 relative to editor width (centered when omitted)
+        {style?}       (string)
+        {border?}      (string)
+
+
 bufsitter.config.scratch.opts                    *bufsitter.config.scratch.opts*
 
     Fields: ~
         {ft?}             (string)
         {init_contents?}  (string[]|fun():string[])
         {on_attach?}      (fun(bufnr:integer))
-        {win?}            (vim.api.keyset.win_config)
+        {win?}            (bufsitter.config.scratch.win.opts)
 
 
 bufsitter.config.ref.opts                            *bufsitter.config.ref.opts*
@@ -105,6 +119,7 @@ bufsitter.cursor.opts                                    *bufsitter.cursor.opts*
     Fields: ~
         {names?}  (string[])
         {types?}  (string[])
+        {texts?}  (string[])
 
 
 bufsitter.cursor.fn                                        *bufsitter.cursor.fn*
@@ -201,6 +216,7 @@ bufsitter.io.delete.opts                              *bufsitter.io.delete.opts*
         {end_row?}    (integer)
         {end_col?}    (integer)
         {on_error?}   (fun(err:string))
+        {trim_end?}   (boolean)           Strip trailing blank lines from the node end when using cursor (default true)
 
 
 bufsitter.io.replace.opts                            *bufsitter.io.replace.opts*
@@ -466,13 +482,15 @@ Initial content can be provided as a string array or a function, and an
 bufsitter.scratch.win.opts                          *bufsitter.scratch.win.opts*
 
     Fields: ~
-        {relative?}  (string)
-        {width?}     (integer)
-        {height?}    (integer)
-        {row?}       (integer)
-        {col?}       (integer)
-        {style?}     (string)
-        {border?}    (string)
+        {relative?}    (string)
+        {width?}       (number)  Width in columns, or a ratio 0–1 relative to editor width
+        {height?}      (number)  Height in rows, or a ratio 0–1 relative to editor height
+        {min_width?}   (number)  Minimum width in columns, or a ratio 0–1 relative to editor width
+        {min_height?}  (number)  Minimum height in rows, or a ratio 0–1 relative to editor height
+        {row?}         (number)  Top row, or a ratio 0–1 relative to editor height (centered when omitted)
+        {col?}         (number)  Left column, or a ratio 0–1 relative to editor width (centered when omitted)
+        {style?}       (string)
+        {border?}      (string)
 
 
 bufsitter.scratch.opts                                  *bufsitter.scratch.opts*
@@ -560,8 +578,10 @@ Scratch:is_visible()                              *bufsitter.scratch:is_visible*
 
 
 Scratch:show({win_opts?})                               *bufsitter.scratch:show*
-    Opens the floating window. If it is already visible, reattaches the buffer
-    to the existing window. Returns the window id, or nil if the buffer is invalid.
+    Opens the floating window. All of `width`, `height`, `row`, and `col` accept
+    either an absolute integer or a 0–1 ratio relative to the editor size.
+    `row` and `col` default to centered when omitted.
+    Returns the window id, or nil if the buffer is invalid.
 
     Parameters: ~
         {win_opts?}  (bufsitter.scratch.win.opts)
@@ -574,7 +594,8 @@ Scratch:show({win_opts?})                               *bufsitter.scratch:show*
         local Scratch = require("bufsitter.scratch")
         local s = Scratch.new()
         s:show()
-        s:show({ width = 100, height = 30 })
+        s:show({ width = 0.8, height = 0.6 })
+        s:show({ width = 0.8, height = 0.6, row = 0.1, col = 0.1 })
 <
 
 
