@@ -55,8 +55,6 @@ local default = {
   },
 }
 
-M.config = default
-
 ---Initializes bufsitter with the given options, deep-merged over the defaults.
 ---Must be called once before using any other bufsitter API.
 ---@param opts? bufsitter.config.opts
@@ -73,6 +71,11 @@ M.config = default
 function M.setup(opts)
   ---@type bufsitter.config.opts
   M.config = vim.tbl_deep_extend("force", default, opts or {})
+  vim.g.bufsitter_loaded = 1
+end
+
+if not vim.g.bufsitter_loaded then
+  M.setup()
 end
 
 return M
