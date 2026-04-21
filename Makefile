@@ -1,5 +1,7 @@
 DOCS_DIR ?= doc
 DEPS_DIR = .deps/start
+PARSER_DIR = .deps/parsers
+NVIM_PARSER_DIR = $(shell nvim --headless -c "lua io.write(vim.fn.stdpath('data'))" -c "q" 2>/dev/null)/site/parser
 
 $(DEPS_DIR)/plenary.nvim:
 	git clone --depth 1 https://github.com/nvim-lua/plenary.nvim $@
@@ -7,10 +9,21 @@ $(DEPS_DIR)/plenary.nvim:
 $(DEPS_DIR)/nvim-treesitter:
 	git clone --depth 1 https://github.com/nvim-treesitter/nvim-treesitter $@
 
+$(PARSER_DIR)/tree-sitter-go:
+	git clone --depth 1 https://github.com/tree-sitter/tree-sitter-go $@
+
+$(PARSER_DIR)/tree-sitter-typst:
+	git clone --depth 1 https://github.com/uben0/tree-sitter-typst $@
+
 _deps: $(DEPS_DIR)/plenary.nvim $(DEPS_DIR)/nvim-treesitter
 
-_install-parsers: _deps
-	nvim --headless -u tests/install_parsers.lua -c "q"
+_install-parsers: _deps $(PARSER_DIR)/tree-sitter-go $(PARSER_DIR)/tree-sitter-typst
+	mkdir -p $(NVIM_PARSER_DIR)
+	gcc -shared -fPIC -o $(NVIM_PARSER_DIR)/go.so -I$(PARSER_DIR)/tree-sitter-go/src \
+		$(PARSER_DIR)/tree-sitter-go/src/parser.c
+	gcc -shared -fPIC -o $(NVIM_PARSER_DIR)/typst.so -I$(PARSER_DIR)/tree-sitter-typst/src \
+		$(PARSER_DIR)/tree-sitter-typst/src/parser.c \
+		$(PARSER_DIR)/tree-sitter-typst/src/scanner.c
 
 test: _install-parsers
 	nvim \
