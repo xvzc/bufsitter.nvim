@@ -15,7 +15,7 @@ pkgs.mkShell {
   ];
   shellHook = # sh
     ''
-      export name="nix:promdown.nvim"
+      export name="nix:bufsitter.nvim"
       export NVIM_APPNAME="nvim"
     '';
 }

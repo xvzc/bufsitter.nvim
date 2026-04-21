@@ -173,7 +173,7 @@ function Base:children(opts)
       end
     end
     return result
-  end)
+  end, prev)
 end
 
 local function make_or_else(self, constructor)
@@ -237,7 +237,7 @@ function Multi:parents(opts)
       end
     end
     return result
-  end)
+  end, prev)
 end
 
 ---Falls back to the previous cursor step if the current step yields no nodes.
@@ -274,7 +274,7 @@ function Multi:nth(n)
     local idx = n > 0 and n or (#nodes + n + 1)
     local node = nodes[idx]
     return node and { node } or {}
-  end)
+  end, prev)
 end
 
 ---Selects the first node. Equivalent to `nth(1)`.

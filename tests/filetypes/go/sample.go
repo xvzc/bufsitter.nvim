@@ -18,7 +18,7 @@ type UserProfile struct {
     // 2. Basic pointers and strings
     Username *string `json:"username"`
     Email    string  `json:"email"`
-    
+
     // 3. Collections: Slices and Maps
     Roles    []string          `json:"roles"`
     Settings map[string]string `json:"settings"`
@@ -31,7 +31,7 @@ type UserProfile struct {
 
     // 5. Interface member (for polymorphism tests)
     Permissions any `json:"permissions"`
-    
+
     // 6. Channel for concurrency tests
     StatusChan chan int `json:"-"`
 }

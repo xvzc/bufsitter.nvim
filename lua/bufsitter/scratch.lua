@@ -130,6 +130,7 @@ function Scratch:show(win_opts)
 
   if self:is_visible() then
     vim.api.nvim_win_set_buf(self._winid, self._bufnr)
+    vim.api.nvim_win_set_config(self._winid, wopts)
   else
     self._winid = vim.api.nvim_open_win(self._bufnr, true, wopts)
   end

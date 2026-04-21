@@ -241,7 +241,8 @@ function M.insert(bufnr, contents, opts)
               contents
             )
           else
-            vim.api.nvim_buf_set_text(bufnr, er, ec, er, ec, contents)
+            local end_row, end_col = clamp_end(bufnr, er, ec)
+            vim.api.nvim_buf_set_text(bufnr, end_row, end_col, end_row, end_col, contents)
           end
         else
           -- ec=0 means exclusive end (before row er), so insert at er; otherwise after er
