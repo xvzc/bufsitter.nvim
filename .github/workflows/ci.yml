@@ -25,15 +25,18 @@ jobs:
         run: npx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
 
   test:
-    name: Test
+    name: Test (Neovim ${{ matrix.neovim-version }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        neovim-version: ["v0.10.4", "v0.11.7", "v0.12.1"]
     steps:
       - uses: actions/checkout@v4
 
       - uses: rhysd/action-setup-vim@v1
         with:
           neovim: true
-          version: v0.12.1
+          version: ${{ matrix.neovim-version }}
 
       - name: Run tests
         run: make test
