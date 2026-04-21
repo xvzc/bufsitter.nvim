@@ -263,4 +263,42 @@ describe("ft.markdown", function()
       assert.are.same(true, has_usage)
     end)
   end)
+
+  describe("usage example", function()
+    it("inserts a list item into a section matched by heading text", function()
+      local input = {
+        "# Shopping List",
+        "",
+        "- apples",
+        "- oranges",
+        "",
+        "# Todo",
+      }
+      local expected = {
+        "# Shopping List",
+        "",
+        "- apples",
+        "- oranges",
+        "- milk",
+        "",
+        "# Todo",
+      }
+
+      local example_bufnr = h.make_buf(input, "markdown")
+
+      io.insert(example_bufnr, { "- milk" }, {
+        cursor = cursor
+          .root()
+          :children({ types = { "section" } })
+          :children({ types = { "atx_heading" } })
+          :children({ types = { "inline" }, texts = { "Shopping List" } })
+          :first()
+          :parent()
+          :parent(),
+      })
+
+      local actual = vim.api.nvim_buf_get_lines(example_bufnr, 0, -1, false)
+      assert.are.same(expected, actual)
+    end)
+  end)
 end)

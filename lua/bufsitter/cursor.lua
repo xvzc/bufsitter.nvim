@@ -23,6 +23,7 @@
 ---@class bufsitter.cursor.opts
 ---@field names? string[]
 ---@field types? string[]
+---@field texts? string[]
 
 ---@alias bufsitter.cursor.fn fun(bufnr: integer, node: TSNode): boolean
 
@@ -73,6 +74,19 @@ local function type_matches(node, types)
   return false
 end
 
+local function text_matches(node, bufnr, texts)
+  if not texts or #texts == 0 then
+    return true
+  end
+  local text = vim.treesitter.get_node_text(node, bufnr)
+  for _, t in ipairs(texts) do
+    if text == t then
+      return true
+    end
+  end
+  return false
+end
+
 local function node_in_field(node, parent, name)
   for _, f in ipairs(parent:field(name)) do
     if f == node then
@@ -82,8 +96,8 @@ local function node_in_field(node, parent, name)
   return false
 end
 
--- collect named children of `parent`, filtered by opts (names AND types)
-local function collect_children(parent, opts)
+-- collect named children of `parent`, filtered by opts (names AND types AND texts)
+local function collect_children(parent, opts, bufnr)
   local candidates = {}
   if opts and opts.names and #opts.names > 0 then
     local seen = {}
@@ -100,24 +114,27 @@ local function collect_children(parent, opts)
       table.insert(candidates, parent:named_child(i))
     end
   end
-  if not opts or not opts.types or #opts.types == 0 then
+  if not opts or (not opts.types and not opts.texts) then
     return candidates
   end
   local result = {}
   for _, child in ipairs(candidates) do
-    if type_matches(child, opts.types) then
+    if type_matches(child, opts.types) and text_matches(child, bufnr, opts.texts) then
       table.insert(result, child)
     end
   end
   return result
 end
 
--- check if `node` matches opts, given its `parent` for field-name checking (names AND types)
-local function node_matches(node, parent, opts)
+-- check if `node` matches opts, given its `parent` for field-name checking (names AND types AND texts)
+local function node_matches(node, parent, opts, bufnr)
   if not opts then
     return true
   end
   if not type_matches(node, opts.types) then
+    return false
+  end
+  if not text_matches(node, bufnr, opts.texts) then
     return false
   end
   if opts.names and #opts.names > 0 then
@@ -168,7 +185,7 @@ function Base:children(opts)
   return new_multi(function(bufnr)
     local result = {}
     for _, node in ipairs(prev._exec(bufnr)) do
-      for _, child in ipairs(collect_children(node, opts)) do
+      for _, child in ipairs(collect_children(node, opts, bufnr)) do
         table.insert(result, child)
       end
     end
@@ -232,7 +249,7 @@ function Multi:parents(opts)
     local result = {}
     for _, node in ipairs(prev._exec(bufnr)) do
       local p = node:parent()
-      if p and node_matches(p, p:parent(), opts) then
+      if p and node_matches(p, p:parent(), opts, bufnr) then
         table.insert(result, p)
       end
     end
@@ -361,7 +378,7 @@ function Single:parent(opts)
     local result = {}
     for _, node in ipairs(prev._exec(bufnr)) do
       local p = node:parent()
-      if p and node_matches(p, p:parent(), opts) then
+      if p and node_matches(p, p:parent(), opts, bufnr) then
         table.insert(result, p)
       end
     end
@@ -385,7 +402,7 @@ function Single:siblings(opts)
     for _, node in ipairs(prev._exec(bufnr)) do
       local p = node:parent()
       if p then
-        for _, sib in ipairs(collect_children(p, opts)) do
+        for _, sib in ipairs(collect_children(p, opts, bufnr)) do
           if sib ~= node then
             table.insert(result, sib)
           end
@@ -414,7 +431,7 @@ function Single:next_siblings(opts)
       local p = node:parent()
       local sib = node:next_named_sibling()
       while sib ~= nil do
-        if node_matches(sib, p, opts) then
+        if node_matches(sib, p, opts, bufnr) then
           table.insert(result, sib)
         end
         sib = sib:next_named_sibling()
@@ -442,7 +459,7 @@ function Single:prev_siblings(opts)
       local p = node:parent()
       local sib = node:prev_named_sibling()
       while sib ~= nil do
-        if node_matches(sib, p, opts) then
+        if node_matches(sib, p, opts, bufnr) then
           table.insert(result, sib)
         end
         sib = sib:prev_named_sibling()
