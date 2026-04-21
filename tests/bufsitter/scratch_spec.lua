@@ -1,5 +1,5 @@
 local Scratch = require("bufsitter.scratch")
-local config = require("bufsitter.config")
+local config = require("bufsitter")
 
 describe("scratch", function()
   before_each(function()

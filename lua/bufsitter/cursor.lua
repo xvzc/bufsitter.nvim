@@ -1,10 +1,24 @@
 ---@mod bufsitter.cursor Cursor
-
----@class bufsitter.cursor.range
----@field sr integer
----@field sc integer
----@field er integer
----@field ec integer
+---@brief [[
+---Lazy treesitter node traversal API.
+---
+---A cursor is a reusable, lazy query — it describes a traversal chain but does
+---not touch any buffer until |bufsitter.Cursor:exec| is called. The same cursor
+---instance can be passed to multiple |bufsitter.io| functions or evaluated
+---against different buffers without rebuilding the chain.
+---
+---Two cursor types exist:
+---
+--- - |bufsitter.MultiCursor|  — holds zero or more nodes
+--- - |bufsitter.SingleCursor| — holds at most one node
+---
+---|bufsitter.Cursor:exec| evaluates the chain and returns a flat list of TSNode
+---values matched in that buffer at that moment. Each TSNode exposes the standard
+---treesitter API (`:type()`, `:range()`, `:named_child()`, etc.).
+---
+---Entry points are |bufsitter.cursor.root| and |bufsitter.cursor.query|.
+---Cursors are passed to `io.*` functions via the `cursor` field in opts.
+---@brief ]]
 
 ---@class bufsitter.cursor.opts
 ---@field names? string[]
@@ -25,19 +39,6 @@ Multi.__index = Multi
 ---@class bufsitter.SingleCursor : bufsitter.Cursor
 local Single = setmetatable({}, { __index = Base })
 Single.__index = Single
-
-local function call_impl(self, bufnr)
-  local nodes = self._exec(bufnr)
-  local result = {}
-  for _, node in ipairs(nodes) do
-    local sr, sc, er, ec = node:range()
-    table.insert(result, { node = node, range = { sr = sr, sc = sc, er = er, ec = ec } })
-  end
-  return result
-end
-
-Multi.__call = call_impl
-Single.__call = call_impl
 
 -- Factories
 
@@ -135,8 +136,33 @@ end
 
 -- Base methods (shared by Multi and Single)
 
+---Evaluates the cursor chain against `bufnr` and returns the matched TSNodes.
+---@param bufnr integer
+---@return TSNode[]
+---@usage [[
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+---local nodes = cursor.root():children({ types = { "function_declaration" } }):exec(bufnr)
+---for _, node in ipairs(nodes) do
+---  print(node:type())
+---end
+---@usage ]]
+function Base:exec(bufnr)
+  return self._exec(bufnr)
+end
+
+---Returns the named children of every node in the cursor.
+---`opts.names` filters by field name; `opts.types` filters by node type.
+---Both filters are ANDed when both are specified.
 ---@param opts? bufsitter.cursor.opts
 ---@return bufsitter.MultiCursor
+---@usage [[
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+---cursor.root():children():exec(bufnr)
+---cursor.root():children({ types = { "function_declaration" } }):exec(bufnr)
+---cursor.root():children({ names = { "parameters" }, types = { "parameter_list" } }):exec(bufnr)
+---@usage ]]
 function Base:children(opts)
   local prev = self
   return new_multi(function(bufnr)
@@ -167,8 +193,16 @@ end
 
 -- MultiCursor methods
 
+---Keeps only nodes for which `fn` returns true.
 ---@param fn bufsitter.cursor.fn
 ---@return bufsitter.MultiCursor
+---@usage [[
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+---cursor.root():children():filter(function(b, node)
+---  return vim.treesitter.get_node_text(node, b):find("TODO") ~= nil
+---end):exec(bufnr)
+---@usage ]]
 function Multi:filter(fn)
   local prev = self
   return new_multi(function(bufnr)
@@ -182,8 +216,16 @@ function Multi:filter(fn)
   end, prev)
 end
 
+---Returns the parent of every node in the cursor, optionally filtered by
+---`opts.types` and `opts.names`.
 ---@param opts? bufsitter.cursor.opts
 ---@return bufsitter.MultiCursor
+---@usage [[
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+---cursor.root():children():parents():exec(bufnr)
+---cursor.root():children():parents({ types = { "source_file" } }):exec(bufnr)
+---@usage ]]
 function Multi:parents(opts)
   local prev = self
   return new_multi(function(bufnr)
@@ -198,13 +240,29 @@ function Multi:parents(opts)
   end)
 end
 
+---Falls back to the previous cursor step if the current step yields no nodes.
 ---@return bufsitter.MultiCursor
+---@usage [[
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+---local fn = function(b, node) return node:type() == "identifier" end
+----- use all children if filter yields nothing
+---cursor.root():children():filter(fn):or_else():exec(bufnr)
+---@usage ]]
 function Multi:or_else()
   return make_or_else(self, new_multi)
 end
 
+---Selects the nth node. Positive indices are 1-based from the front;
+---negative indices count from the end (-1 = last). 0 is an error.
 ---@param n integer 1-based; negative counts from end (-1 = last); 0 is an error
 ---@return bufsitter.SingleCursor
+---@usage [[
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+---cursor.root():children():nth(2):exec(bufnr)   -- second child
+---cursor.root():children():nth(-2):exec(bufnr)  -- second-to-last child
+---@usage ]]
 function Multi:nth(n)
   assert(n ~= 0, "nth: index cannot be 0")
   local prev = self
@@ -219,25 +277,55 @@ function Multi:nth(n)
   end)
 end
 
+---Selects the first node. Equivalent to `nth(1)`.
 ---@return bufsitter.SingleCursor
+---@usage [[
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+---cursor.root():children({ types = { "function_declaration" } }):first():exec(bufnr)
+---@usage ]]
 function Multi:first()
   return self:nth(1)
 end
 
+---Selects the last node. Equivalent to `nth(-1)`.
 ---@return bufsitter.SingleCursor
+---@usage [[
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+---cursor.root():children({ types = { "function_declaration" } }):last():exec(bufnr)
+---@usage ]]
 function Multi:last()
   return self:nth(-1)
 end
 
+---Returns the first node for which `fn` returns true.
+---Equivalent to `filter(fn):first()`.
 ---@param fn bufsitter.cursor.fn
 ---@return bufsitter.SingleCursor
+---@usage [[
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+---cursor.root():children():any(function(b, node)
+---  return node:type() == "function_declaration"
+---end):exec(bufnr)
+---@usage ]]
 function Multi:any(fn)
   return self:filter(fn):first()
 end
 
+---Errors if the cursor holds no nodes, or if `fn` returns false for any node.
+---`msg` overrides the default error message.
 ---@param msg? string
 ---@param fn? bufsitter.cursor.fn
 ---@return bufsitter.MultiCursor
+---@usage [[
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+---cursor.root()
+---  :children({ types = { "function_declaration" } })
+---  :assert("no functions found"):exec(bufnr)
+---@usage ]]
 function Multi:assert(msg, fn)
   local prev = self
   return new_multi(function(bufnr)
@@ -258,8 +346,15 @@ end
 
 -- SingleCursor methods
 
+---Returns the parent of the node, optionally filtered by `opts`.
 ---@param opts? bufsitter.cursor.opts
 ---@return bufsitter.SingleCursor
+---@usage [[
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+---cursor.root():children():first():parent():exec(bufnr)
+---cursor.root():children():first():parent({ types = { "source_file" } }):exec(bufnr)
+---@usage ]]
 function Single:parent(opts)
   local prev = self
   return new_single(function(bufnr)
@@ -274,8 +369,15 @@ function Single:parent(opts)
   end, prev)
 end
 
+---Returns all siblings of the node (excluding itself), optionally filtered by `opts`.
 ---@param opts? bufsitter.cursor.opts
 ---@return bufsitter.MultiCursor
+---@usage [[
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+---cursor.root():children():first():siblings():exec(bufnr)
+---cursor.root():children():first():siblings({ types = { "function_declaration" } }):exec(bufnr)
+---@usage ]]
 function Single:siblings(opts)
   local prev = self
   return new_multi(function(bufnr)
@@ -294,8 +396,16 @@ function Single:siblings(opts)
   end)
 end
 
+---Returns all named siblings that appear after the node in source order,
+---optionally filtered by `opts`.
 ---@param opts? bufsitter.cursor.opts
 ---@return bufsitter.MultiCursor
+---@usage [[
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+---cursor.root():children():first():next_siblings():exec(bufnr)
+---cursor.root():children():first():next_siblings({ types = { "comment" } }):exec(bufnr)
+---@usage ]]
 function Single:next_siblings(opts)
   local prev = self
   return new_multi(function(bufnr)
@@ -314,8 +424,16 @@ function Single:next_siblings(opts)
   end)
 end
 
+---Returns all named siblings that appear before the node in source order,
+---optionally filtered by `opts`.
 ---@param opts? bufsitter.cursor.opts
 ---@return bufsitter.MultiCursor
+---@usage [[
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+---cursor.root():children():last():prev_siblings():exec(bufnr)
+---cursor.root():children():last():prev_siblings({ types = { "comment" } }):exec(bufnr)
+---@usage ]]
 function Single:prev_siblings(opts)
   local prev = self
   return new_multi(function(bufnr)
@@ -334,14 +452,29 @@ function Single:prev_siblings(opts)
   end)
 end
 
+---Falls back to the previous cursor step if the current step yields no node.
 ---@return bufsitter.SingleCursor
+---@usage [[
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+---local fn = function(b, node) return node:type() == "identifier" end
+----- fall back to any child if filter finds nothing
+---cursor.root():children():filter(fn):first():or_else():exec(bufnr)
+---@usage ]]
 function Single:or_else()
   return make_or_else(self, new_single)
 end
 
+---Errors if the cursor holds no node, or if `fn` returns false for the node.
+---`msg` overrides the default error message.
 ---@param msg? string
 ---@param fn? bufsitter.cursor.fn
 ---@return bufsitter.SingleCursor
+---@usage [[
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+---cursor.root():children():first():assert("expected a child"):exec(bufnr)
+---@usage ]]
 function Single:assert(msg, fn)
   local prev = self
   return new_single(function(bufnr)
@@ -362,7 +495,13 @@ end
 
 local M = {}
 
+---Returns a cursor seeded with the root node of the buffer's syntax tree.
 ---@return bufsitter.MultiCursor
+---@usage [[
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+---local nodes = cursor.root():children():exec(bufnr)
+---@usage ]]
 function M.root()
   return new_multi(function(bufnr)
     local parser = get_parser(bufnr)
@@ -374,8 +513,16 @@ function M.root()
   end)
 end
 
+---Returns a cursor seeded with all nodes captured by the given treesitter
+---query string, evaluated against the buffer's filetype.
 ---@param query_str string
 ---@return bufsitter.MultiCursor
+---
+---@usage [[
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+---local nodes = cursor.query("(function_declaration) @fn"):exec(bufnr)
+---@usage ]]
 function M.query(query_str)
   return new_multi(function(bufnr)
     local parser = get_parser(bufnr)

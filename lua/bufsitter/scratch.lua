@@ -1,6 +1,14 @@
 ---@mod bufsitter.scratch Scratch
+---@brief [[
+---Floating scratch buffer with show/hide/toggle lifecycle management.
+---
+---A `Scratch` is a unlisted, non-file buffer displayed in a floating window.
+---Window position and size are configured via |bufsitter.scratch.win.opts|.
+---Initial content can be provided as a string array or a function, and an
+---`on_attach` callback runs once on buffer creation.
+---@brief ]]
 
----@class bufsitter.scratch.win_opts
+---@class bufsitter.scratch.win.opts
 ---@field relative? string
 ---@field width? integer
 ---@field height? integer
@@ -13,19 +21,31 @@
 ---@field ft? string
 ---@field init_contents? string[] | fun(): string[]
 ---@field on_attach? fun(bufnr: integer)
----@field win? bufsitter.scratch.win_opts
+---@field win? bufsitter.scratch.win.opts
 
 ---@class bufsitter.Scratch
 ---@field private _bufnr integer
 ---@field private _winid integer|nil
----@field private _win_opts bufsitter.scratch.win_opts
+---@field private _win_opts bufsitter.scratch.win.opts
 local Scratch = {}
 Scratch.__index = Scratch
 
-local config = require("bufsitter.config")
+local config = require("bufsitter")
 
+---Creates a new scratch buffer, deep-merging `opts` over the global defaults.
+---Sets the filetype, writes `init_contents`, and calls `on_attach` if provided.
 ---@param opts? bufsitter.scratch.opts
 ---@return bufsitter.Scratch
+---@usage [[
+---local Scratch = require("bufsitter.scratch")
+---local s = Scratch.new({
+---  ft = "markdown",
+---  init_contents = { "# Notes", "" },
+---  on_attach = function(bufnr)
+---    vim.keymap.set("n", "q", "<cmd>close<cr>", { buffer = bufnr })
+---  end,
+---})
+---@usage ]]
 function Scratch.new(opts)
   opts = vim.tbl_deep_extend("force", config.config.scratch, opts or {})
 
@@ -54,23 +74,53 @@ function Scratch.new(opts)
   return self
 end
 
+---Returns the buffer number of the scratch buffer.
 ---@return integer
+---@usage [[
+---local Scratch = require("bufsitter.scratch")
+---local s = Scratch.new()
+---local bufnr = s:bufnr()
+---@usage ]]
 function Scratch:bufnr()
   return self._bufnr
 end
 
+---Returns true if the underlying buffer still exists.
 ---@return boolean
+---@usage [[
+---local Scratch = require("bufsitter.scratch")
+---local s = Scratch.new()
+---if s:is_valid() then
+---  s:show()
+---end
+---@usage ]]
 function Scratch:is_valid()
   return vim.api.nvim_buf_is_valid(self._bufnr)
 end
 
+---Returns true if the floating window is currently open.
 ---@return boolean
+---@usage [[
+---local Scratch = require("bufsitter.scratch")
+---local s = Scratch.new()
+---if not s:is_visible() then
+---  s:show()
+---end
+---@usage ]]
 function Scratch:is_visible()
   return self._winid ~= nil and vim.api.nvim_win_is_valid(self._winid)
 end
 
----@param win_opts? bufsitter.scratch.win_opts
+---Opens the floating window. If it is already visible, reattaches the buffer
+---to the existing window. Returns the window id, or nil if the buffer is invalid.
+---@param win_opts? bufsitter.scratch.win.opts
 ---@return integer|nil
+---@usage [[
+---local Scratch = require("bufsitter.scratch")
+---local s = Scratch.new()
+---s:show()
+---s:show({ width = 100, height = 30 })
+---@usage ]]
 function Scratch:show(win_opts)
   if not self:is_valid() then
     return nil
@@ -87,6 +137,12 @@ function Scratch:show(win_opts)
   return self._winid
 end
 
+---Closes the floating window without deleting the buffer.
+---@usage [[
+---local Scratch = require("bufsitter.scratch")
+---local s = Scratch.new()
+---s:hide()
+---@usage ]]
 function Scratch:hide()
   if not self._winid or not vim.api.nvim_win_is_valid(self._winid) then
     return
@@ -95,7 +151,13 @@ function Scratch:hide()
   self._winid = nil
 end
 
----@param win_opts? bufsitter.scratch.win_opts
+---Hides the window if visible, shows it otherwise.
+---@param win_opts? bufsitter.scratch.win.opts
+---@usage [[
+---local Scratch = require("bufsitter.scratch")
+---local s = Scratch.new()
+---vim.keymap.set("n", "<leader>s", function() s:toggle() end)
+---@usage ]]
 function Scratch:toggle(win_opts)
   if self:is_visible() then
     self:hide()
@@ -104,6 +166,13 @@ function Scratch:toggle(win_opts)
   end
 end
 
+---Closes the floating window and deletes the buffer. The instance should not
+---be used after calling this.
+---@usage [[
+---local Scratch = require("bufsitter.scratch")
+---local s = Scratch.new()
+---s:delete()
+---@usage ]]
 function Scratch:delete()
   if self._winid and vim.api.nvim_win_is_valid(self._winid) then
     vim.api.nvim_win_close(self._winid, false)

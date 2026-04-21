@@ -1,6 +1,6 @@
 local io = require("bufsitter.io")
 local cursor = require("bufsitter.cursor")
-local config = require("bufsitter.config")
+local config = require("bufsitter")
 local h = require("tests.helpers")
 
 describe("io", function()
@@ -43,9 +43,7 @@ describe("io", function()
 
       local bufnr = h.make_buf(contents)
       io.insert(bufnr, { "added" }, {
-        cursor = function()
-          return {}
-        end,
+        cursor = cursor.root():children(),
       })
 
       local actual = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
@@ -135,9 +133,7 @@ describe("io", function()
 
       local bufnr = h.make_buf(contents)
       local actual = io.select(bufnr, {
-        cursor = function()
-          return {}
-        end,
+        cursor = cursor.root():children(),
       })
 
       assert.are.same(expected, actual)
@@ -160,9 +156,7 @@ describe("io", function()
 
       local bufnr = h.make_buf(contents)
       local actual = io.select_text(bufnr, {
-        cursor = function()
-          return {}
-        end,
+        cursor = cursor.root():children(),
       })
 
       assert.are.same(nil, actual)
@@ -198,9 +192,7 @@ describe("io", function()
 
       local bufnr = h.make_buf(contents)
       io.delete(bufnr, {
-        cursor = function()
-          return {}
-        end,
+        cursor = cursor.root():children(),
       })
 
       local actual = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)

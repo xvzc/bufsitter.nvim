@@ -4,11 +4,6 @@ local h = require("tests.helpers")
 
 local SAMPLE = "tests/filetypes/typst/sample.typ"
 
-local ts_parser = vim.fn.stdpath("data") .. "/lazy/nvim-treesitter/parser/typst.so"
-if vim.fn.filereadable(ts_parser) == 1 then
-  vim.treesitter.language.add("typst", { path = ts_parser })
-end
-
 describe("ft.typst", function()
   local bufnr
 
@@ -51,7 +46,7 @@ describe("ft.typst", function()
 
   describe("section navigation", function()
     it("document has 3 top-level sections", function()
-      local items = cursor.root():children()(bufnr)
+      local items = cursor.root():children():exec(bufnr)
       assert.are.same(3, #items)
     end)
 
@@ -60,23 +55,25 @@ describe("ft.typst", function()
         .root()
         :children()
         :filter(section_with(heading_text("Installation")))
-        :first()(bufnr)
+        :first()
+        :exec(bufnr)
       assert.are.same(true, #items > 0)
-      assert.are.same("section", items[1].node:type())
+      local actual = items[1]:type()
+      assert.are.same("section", actual)
     end)
 
     it("finds Configuration section (last)", function()
-      local items = cursor.root():children():last()(bufnr)
+      local items = cursor.root():children():last():exec(bufnr)
       assert.are.same(true, #items > 0)
       local heading = nil
-      for i = 0, items[1].node:named_child_count() - 1 do
-        if items[1].node:named_child(i):type() == "heading" then
-          heading = items[1].node:named_child(i)
+      for i = 0, items[1]:named_child_count() - 1 do
+        if items[1]:named_child(i):type() == "heading" then
+          heading = items[1]:named_child(i)
           break
         end
       end
-      local text = vim.treesitter.get_node_text(heading, bufnr)
-      assert.are.same(true, text:find("Configuration") ~= nil)
+      local actual = vim.treesitter.get_node_text(heading, bufnr)
+      assert.are.same(true, actual:find("Configuration") ~= nil)
     end)
 
     it("navigates to next section from Installation", function()
@@ -86,10 +83,11 @@ describe("ft.typst", function()
         :filter(section_with(heading_text("Installation")))
         :first()
         :next_siblings({ types = { "section" } })
-        :first()(bufnr)
+        :first()
+        :exec(bufnr)
       assert.are.same(true, #items > 0)
-      local text = vim.treesitter.get_node_text(items[1].node:named_child(0), bufnr)
-      assert.are.same(true, text:find("Usage") ~= nil)
+      local actual = vim.treesitter.get_node_text(items[1]:named_child(0), bufnr)
+      assert.are.same(true, actual:find("Usage") ~= nil)
     end)
 
     it("navigates to prev section from Configuration", function()
@@ -98,10 +96,11 @@ describe("ft.typst", function()
         :children()
         :last()
         :prev_siblings({ types = { "section" } })
-        :first()(bufnr)
+        :first()
+        :exec(bufnr)
       assert.are.same(true, #items > 0)
-      local text = vim.treesitter.get_node_text(items[1].node:named_child(0), bufnr)
-      assert.are.same(true, text:find("Usage") ~= nil)
+      local actual = vim.treesitter.get_node_text(items[1]:named_child(0), bufnr)
+      assert.are.same(true, actual:find("Usage") ~= nil)
     end)
   end)
 
@@ -113,9 +112,11 @@ describe("ft.typst", function()
         :filter(section_with(heading_text("Installation")))
         :first()
         :children({ types = { "heading" } })
-        :first()(bufnr)
+        :first()
+        :exec(bufnr)
       assert.are.same(true, #items > 0)
-      assert.are.same("heading", items[1].node:type())
+      local actual = items[1]:type()
+      assert.are.same("heading", actual)
     end)
 
     it("finds level-1 heading in Installation", function()
@@ -126,7 +127,8 @@ describe("ft.typst", function()
         :first()
         :children()
         :filter(heading_level(1))
-        :first()(bufnr)
+        :first()
+        :exec(bufnr)
       assert.are.same(true, #items > 0)
     end)
 
@@ -142,10 +144,11 @@ describe("ft.typst", function()
         :first()
         :children()
         :filter(heading_level(2))
-        :first()(bufnr)
+        :first()
+        :exec(bufnr)
       assert.are.same(true, #items > 0)
-      local text = vim.treesitter.get_node_text(items[1].node, bufnr)
-      assert.are.same(true, text:find("Basic Setup") ~= nil)
+      local actual = vim.treesitter.get_node_text(items[1], bufnr)
+      assert.are.same(true, actual:find("Basic Setup") ~= nil)
     end)
   end)
 

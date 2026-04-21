@@ -1,4 +1,13 @@
 ---@mod bufsitter.io IO
+---@brief [[
+---Buffer read/write operations driven by a cursor or explicit row/col range.
+---
+---Each function accepts an `opts` table with either a `cursor` field
+---(a |bufsitter.Cursor|) or explicit `start_row`/`end_row` coordinates.
+---When `cursor` is given, the operation is applied to every node the cursor
+---resolves to. An optional `hook` can transform the content before it is
+---written, and `on_error` can intercept errors thrown by the cursor.
+---@brief ]]
 
 ---@class bufsitter.io.select.opts
 ---@field cursor? bufsitter.Cursor
@@ -37,7 +46,7 @@
 ---@field on_error? fun(err: string)
 ---@field hook? fun(bufnr: integer, contents: string[]): string[]?
 
-local config = require("bufsitter.config")
+local config = require("bufsitter")
 
 local M = {}
 
@@ -45,14 +54,16 @@ local function eval_cursor(cursor_fn, bufnr, on_error)
   local handler = on_error
     or (config.config and config.config.io and config.config.io.on_error)
   if handler then
-    local ok, result = pcall(cursor_fn, bufnr)
+    local ok, result = pcall(function()
+      return cursor_fn:exec(bufnr)
+    end)
     if not ok then
       handler(tostring(result))
       return nil
     end
     return result
   end
-  return cursor_fn(bufnr)
+  return cursor_fn:exec(bufnr)
 end
 
 -- Treesitter node ranges use exclusive end: er=N,ec=0 means "start of row N".
@@ -65,9 +76,21 @@ local function clamp_end(bufnr, er, ec)
   return er, ec
 end
 
+---Reads text from `bufnr`. Returns one `string[]` per matched node when
+---`cursor` is used, or a single-element wrapper otherwise.
+---Returns `nil` if the buffer is invalid or the cursor yields nothing.
 ---@param bufnr integer
 ---@param opts bufsitter.io.select.opts
 ---@return string[][]|nil
+---@usage [[
+---local io = require("bufsitter.io")
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+---local results = io.select(bufnr, {
+---  cursor = cursor.root():children({ types = { "function_declaration" } }),
+---})
+----- results[1] == { "func foo() {", "  ...", "}" }
+---@usage ]]
 function M.select(bufnr, opts)
   if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
     return nil
@@ -80,10 +103,10 @@ function M.select(bufnr, opts)
       return nil
     end
     local results = {}
-    for _, item in ipairs(items) do
-      local r = item.range
-      local er, ec = clamp_end(bufnr, r.er, r.ec)
-      local lines = vim.api.nvim_buf_get_text(bufnr, r.sr, r.sc, er, ec, {})
+    for _, node in ipairs(items) do
+      local sr, sc, er, ec = node:range()
+      er, ec = clamp_end(bufnr, er, ec)
+      local lines = vim.api.nvim_buf_get_text(bufnr, sr, sc, er, ec, {})
       if type(opts.hook) == "function" then
         local res = opts.hook(bufnr, lines)
         if res ~= nil then
@@ -113,9 +136,20 @@ function M.select(bufnr, opts)
   return { lines }
 end
 
+---Like `select`, but joins each node's lines with `\n` and returns a flat
+---`string[]` — one string per matched node.
 ---@param bufnr integer
 ---@param opts? bufsitter.io.select.opts
 ---@return string[]|nil
+---@usage [[
+---local io = require("bufsitter.io")
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+---local texts = io.select_text(bufnr, {
+---  cursor = cursor.root():children({ types = { "function_declaration" } }),
+---})
+----- texts[1] == "func foo() {\n  ...\n}"
+---@usage ]]
 function M.select_text(bufnr, opts)
   local results = M.select(bufnr, opts)
   if not results then
@@ -128,9 +162,27 @@ function M.select_text(bufnr, opts)
   return texts
 end
 
+---Inserts `contents` into `bufnr`. When `prepend` is false (default) content
+---is placed after each target; when true, before. `inline` inserts at the
+---exact character position without adding a new line. Without a cursor or
+---range, appends to the end of the buffer.
 ---@param bufnr integer
 ---@param contents string[]
 ---@param opts? bufsitter.io.insert.opts
+---@usage [[
+---local io = require("bufsitter.io")
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+----- append after the first function
+---io.insert(bufnr, { "-- generated" }, {
+---  cursor = cursor.root():children({ types = { "function_declaration" } }):first(),
+---})
+----- prepend before it
+---io.insert(bufnr, { "-- generated" }, {
+---  prepend = true,
+---  cursor = cursor.root():children({ types = { "function_declaration" } }):first(),
+---})
+---@usage ]]
 function M.insert(bufnr, contents, opts)
   if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
     return
@@ -150,25 +202,30 @@ function M.insert(bufnr, contents, opts)
       return
     end
 
-    local pos_key = opts.prepend and "sr" or "er"
     table.sort(items, function(a, b)
-      return a.range[pos_key] > b.range[pos_key]
+      local a_sr, _, a_er = a:range()
+      local b_sr, _, b_er = b:range()
+      if opts.prepend then
+        return a_sr > b_sr
+      else
+        return a_er > b_er
+      end
     end)
 
     local line_count = vim.api.nvim_buf_line_count(bufnr)
-    for _, item in ipairs(items) do
-      local r = item.range
+    for _, node in ipairs(items) do
+      local sr, sc, er, ec = node:range()
       if opts.prepend then
         if opts.inline then
           -- attach at exact character position, no newline added
-          vim.api.nvim_buf_set_text(bufnr, r.sr, r.sc, r.sr, r.sc, contents)
+          vim.api.nvim_buf_set_text(bufnr, sr, sc, sr, sc, contents)
         else
-          vim.api.nvim_buf_set_lines(bufnr, r.sr, r.sr, false, contents)
+          vim.api.nvim_buf_set_lines(bufnr, sr, sr, false, contents)
         end
       else
         if opts.inline then
           -- attach at exact character position, no newline added
-          if r.er >= line_count then
+          if er >= line_count then
             local last = vim.api.nvim_buf_get_lines(
               bufnr,
               line_count - 1,
@@ -184,11 +241,11 @@ function M.insert(bufnr, contents, opts)
               contents
             )
           else
-            vim.api.nvim_buf_set_text(bufnr, r.er, r.ec, r.er, r.ec, contents)
+            vim.api.nvim_buf_set_text(bufnr, er, ec, er, ec, contents)
           end
         else
-          -- ec=0 means exclusive end (before row r.er), so insert at r.er; otherwise after r.er
-          local row = (r.ec == 0) and r.er or (r.er + 1)
+          -- ec=0 means exclusive end (before row er), so insert at er; otherwise after er
+          local row = (ec == 0) and er or (er + 1)
           if row > line_count then
             row = line_count
           end
@@ -251,15 +308,34 @@ function M.insert(bufnr, contents, opts)
   )
 end
 
+---Convenience wrapper around `insert` that splits `str` on newlines first.
 ---@param bufnr integer
 ---@param str string
 ---@param opts? bufsitter.io.insert.opts
+---@usage [[
+---local io = require("bufsitter.io")
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+---io.insert_text(bufnr, "-- line one\n-- line two", {
+---  cursor = cursor.root():children():first(),
+---})
+---@usage ]]
 function M.insert_text(bufnr, str, opts)
   M.insert(bufnr, vim.split(str, "\n"), opts)
 end
 
+---Deletes text from `bufnr`. Nodes are deleted in reverse source order to
+---preserve row indices for subsequent deletions.
 ---@param bufnr integer
 ---@param opts? bufsitter.io.delete.opts
+---@usage [[
+---local io = require("bufsitter.io")
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+---io.delete(bufnr, {
+---  cursor = cursor.root():children({ types = { "function_declaration" } }):first(),
+---})
+---@usage ]]
 function M.delete(bufnr, opts)
   if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
     return
@@ -273,12 +349,14 @@ function M.delete(bufnr, opts)
     end
 
     table.sort(items, function(a, b)
-      return a.range.sr > b.range.sr
+      local a_sr = a:range()
+      local b_sr = b:range()
+      return a_sr > b_sr
     end)
-    for _, item in ipairs(items) do
-      local r = item.range
-      local er, ec = clamp_end(bufnr, r.er, r.ec)
-      vim.api.nvim_buf_set_text(bufnr, r.sr, r.sc, er, ec, {})
+    for _, node in ipairs(items) do
+      local sr, sc, er, ec = node:range()
+      er, ec = clamp_end(bufnr, er, ec)
+      vim.api.nvim_buf_set_text(bufnr, sr, sc, er, ec, {})
     end
     return
   end
@@ -295,9 +373,19 @@ function M.delete(bufnr, opts)
   end
 end
 
+---Replaces the text of each matched node or range with `contents`.
+---Multiple matches are replaced in reverse source order to preserve indices.
 ---@param bufnr integer
 ---@param contents string[]
 ---@param opts? bufsitter.io.replace.opts
+---@usage [[
+---local io = require("bufsitter.io")
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+---io.replace(bufnr, { "func foo() {}", "}" }, {
+---  cursor = cursor.root():children({ types = { "function_declaration" } }):first(),
+---})
+---@usage ]]
 function M.replace(bufnr, contents, opts)
   if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
     return
@@ -318,12 +406,14 @@ function M.replace(bufnr, contents, opts)
     end
 
     table.sort(items, function(a, b)
-      return a.range.sr > b.range.sr
+      local a_sr = a:range()
+      local b_sr = b:range()
+      return a_sr > b_sr
     end)
-    for _, item in ipairs(items) do
-      local r = item.range
-      local er, ec = clamp_end(bufnr, r.er, r.ec)
-      vim.api.nvim_buf_set_text(bufnr, r.sr, r.sc, er, ec, vim.deepcopy(contents))
+    for _, node in ipairs(items) do
+      local sr, sc, er, ec = node:range()
+      er, ec = clamp_end(bufnr, er, ec)
+      vim.api.nvim_buf_set_text(bufnr, sr, sc, er, ec, vim.deepcopy(contents))
     end
     return
   end
@@ -341,14 +431,29 @@ function M.replace(bufnr, contents, opts)
   end
 end
 
+---Convenience wrapper around `replace` that splits `str` on newlines first.
 ---@param bufnr integer
 ---@param str string
 ---@param opts? bufsitter.io.replace.opts
+---@usage [[
+---local io = require("bufsitter.io")
+---local cursor = require("bufsitter.cursor")
+---local bufnr = vim.api.nvim_get_current_buf()
+---io.replace_text(bufnr, "func foo() {}\n}", {
+---  cursor = cursor.root():children():first(),
+---})
+---@usage ]]
 function M.replace_text(bufnr, str, opts)
   M.replace(bufnr, vim.split(str, "\n"), opts)
 end
 
+---Clears all content from `bufnr`, leaving a single empty line.
 ---@param bufnr integer
+---@usage [[
+---local io = require("bufsitter.io")
+---local bufnr = vim.api.nvim_get_current_buf()
+---io.clear(bufnr)
+---@usage ]]
 function M.clear(bufnr)
   if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
     return

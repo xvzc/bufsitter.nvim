@@ -4,12 +4,6 @@ local h = require("tests.helpers")
 
 local SAMPLE = "tests/filetypes/go/sample.go"
 
-local ts_parser = vim.fn.stdpath("data") .. "/lazy/nvim-treesitter/parser/go.so"
-if vim.fn.filereadable(ts_parser) == 0 then
-  return
-end
-vim.treesitter.language.add("go", { path = ts_parser })
-
 describe("ft.go", function()
   local bufnr
 
@@ -48,9 +42,10 @@ describe("ft.go", function()
   describe("function_declaration", function()
     it("finds NewUserProfile by name", function()
       local items =
-        cursor.root():children():filter(func_named("NewUserProfile")):first()(bufnr)
+        cursor.root():children():filter(func_named("NewUserProfile")):first():exec(bufnr)
       assert.are.same(true, #items > 0)
-      assert.are.same("function_declaration", items[1].node:type())
+      local actual = items[1]:type()
+      assert.are.same("function_declaration", actual)
     end)
 
     it("gets name field of NewUserProfile", function()
@@ -59,11 +54,10 @@ describe("ft.go", function()
         :children()
         :filter(func_named("NewUserProfile"))
         :first()
-        :children({ names = { "name" } })(bufnr)
-      assert.are.same(
-        "NewUserProfile",
-        vim.treesitter.get_node_text(items[1].node, bufnr)
-      )
+        :children({ names = { "name" } })
+        :exec(bufnr)
+      local actual = vim.treesitter.get_node_text(items[1], bufnr)
+      assert.are.same("NewUserProfile", actual)
     end)
 
     it("gets parameters field", function()
@@ -72,8 +66,10 @@ describe("ft.go", function()
         :children()
         :filter(func_named("NewUserProfile"))
         :first()
-        :children({ names = { "parameters" } })(bufnr)
-      assert.are.same("parameter_list", items[1].node:type())
+        :children({ names = { "parameters" } })
+        :exec(bufnr)
+      local actual = items[1]:type()
+      assert.are.same("parameter_list", actual)
     end)
 
     it("gets parameter name 'name'", function()
@@ -86,8 +82,10 @@ describe("ft.go", function()
         :first()
         :children()
         :first()
-        :children({ names = { "name" } })(bufnr)
-      assert.are.same("name", vim.treesitter.get_node_text(items[1].node, bufnr))
+        :children({ names = { "name" } })
+        :exec(bufnr)
+      local actual = vim.treesitter.get_node_text(items[1], bufnr)
+      assert.are.same("name", actual)
     end)
 
     it("gets result field (return type)", function()
@@ -96,22 +94,24 @@ describe("ft.go", function()
         :children()
         :filter(func_named("NewUserProfile"))
         :first()
-        :children({ names = { "result" } })(bufnr)
+        :children({ names = { "result" } })
+        :exec(bufnr)
       assert.are.same(true, #items > 0)
-      local text = vim.treesitter.get_node_text(items[1].node, bufnr)
-      assert.are.same(true, text:find("UserProfile") ~= nil)
+      local actual = vim.treesitter.get_node_text(items[1], bufnr)
+      assert.are.same(true, actual:find("UserProfile") ~= nil)
     end)
   end)
 
   describe("type_declaration", function()
     it("finds Metadata type by name", function()
-      local items = cursor.root():children():filter(type_named("Metadata")):first()(bufnr)
+      local items =
+        cursor.root():children():filter(type_named("Metadata")):first():exec(bufnr)
       assert.are.same(true, #items > 0)
     end)
 
     it("finds UserProfile type by name", function()
       local items =
-        cursor.root():children():filter(type_named("UserProfile")):first()(bufnr)
+        cursor.root():children():filter(type_named("UserProfile")):first():exec(bufnr)
       assert.are.same(true, #items > 0)
     end)
 
@@ -130,8 +130,10 @@ describe("ft.go", function()
         :children()
         :filter(function(b, n)
           return n:type() == "field_declaration"
-        end)(bufnr)
-      assert.are.same(4, #items)
+        end)
+        :exec(bufnr)
+      local actual = #items
+      assert.are.same(4, actual)
     end)
 
     it("finds ID field in Metadata by name", function()
@@ -155,8 +157,10 @@ describe("ft.go", function()
           return name and vim.treesitter.get_node_text(name, b) == "ID"
         end)
         :first()
-        :children({ names = { "name" } })(bufnr)
-      assert.are.same("ID", vim.treesitter.get_node_text(items[1].node, bufnr))
+        :children({ names = { "name" } })
+        :exec(bufnr)
+      local actual = vim.treesitter.get_node_text(items[1], bufnr)
+      assert.are.same("ID", actual)
     end)
   end)
 
@@ -165,21 +169,23 @@ describe("ft.go", function()
       local results = io.select(bufnr, {
         cursor = cursor.root():children():filter(type_named("Metadata")):first(),
       })
-      assert.are.same({
+      local expected = {
         "type Metadata struct {",
         '    ID        int64     `json:"id" check:"required"`',
         '    CreatedAt time.Time `json:"created_at"`',
         '    IsActive  bool      `json:"is_active"`',
         '    Version   string    `json:"version"`',
         "}",
-      }, results[1])
+      }
+      local actual = results[1]
+      assert.are.same(expected, actual)
     end)
 
     it("io.select returns exact lines of NewUserProfile function_declaration", function()
       local results = io.select(bufnr, {
         cursor = cursor.root():children():filter(func_named("NewUserProfile")):first(),
       })
-      assert.are.same({
+      local expected = {
         "func NewUserProfile(name string) *UserProfile {",
         "    return &UserProfile{",
         "        Username: &name,",
@@ -187,14 +193,16 @@ describe("ft.go", function()
         "        Settings: make(map[string]string),",
         "    }",
         "}",
-      }, results[1])
+      }
+      local actual = results[1]
+      assert.are.same(expected, actual)
     end)
 
     it("io.delete removes Metadata type_declaration", function()
       io.delete(bufnr, {
         cursor = cursor.root():children():filter(type_named("Metadata")):first(),
       })
-      assert.are.same({
+      local expected = {
         "package main",
         "",
         'import "time"',
@@ -236,14 +244,16 @@ describe("ft.go", function()
         "        Settings: make(map[string]string),",
         "    }",
         "}",
-      }, vim.api.nvim_buf_get_lines(bufnr, 0, -1, false))
+      }
+      local actual = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+      assert.are.same(expected, actual)
     end)
 
     it("io.delete removes NewUserProfile function_declaration", function()
       io.delete(bufnr, {
         cursor = cursor.root():children():filter(func_named("NewUserProfile")):first(),
       })
-      assert.are.same({
+      local expected = {
         "package main",
         "",
         'import "time"',
@@ -284,7 +294,9 @@ describe("ft.go", function()
         "",
         "// NewUserProfile is a constructor example to test return types",
         "",
-      }, vim.api.nvim_buf_get_lines(bufnr, 0, -1, false))
+      }
+      local actual = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+      assert.are.same(expected, actual)
     end)
 
     it("io.insert prepends before NewUserProfile function_declaration", function()
@@ -292,7 +304,7 @@ describe("ft.go", function()
         prepend = true,
         cursor = cursor.root():children():filter(func_named("NewUserProfile")):first(),
       })
-      assert.are.same({
+      local expected = {
         "package main",
         "",
         'import "time"',
@@ -340,7 +352,9 @@ describe("ft.go", function()
         "        Settings: make(map[string]string),",
         "    }",
         "}",
-      }, vim.api.nvim_buf_get_lines(bufnr, 0, -1, false))
+      }
+      local actual = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+      assert.are.same(expected, actual)
     end)
 
     it("io.replace swaps NewUserProfile implementation", function()
@@ -351,7 +365,7 @@ describe("ft.go", function()
       }, {
         cursor = cursor.root():children():filter(func_named("NewUserProfile")):first(),
       })
-      assert.are.same({
+      local expected = {
         "package main",
         "",
         'import "time"',
@@ -394,7 +408,9 @@ describe("ft.go", function()
         "func NewUserProfile() *UserProfile {",
         "    return nil",
         "}",
-      }, vim.api.nvim_buf_get_lines(bufnr, 0, -1, false))
+      }
+      local actual = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+      assert.are.same(expected, actual)
     end)
   end)
 end)

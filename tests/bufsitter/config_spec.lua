@@ -1,4 +1,4 @@
-local config = require("bufsitter.config")
+local config = require("bufsitter")
 
 describe("config", function()
   before_each(function()
