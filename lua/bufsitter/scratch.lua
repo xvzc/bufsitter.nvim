@@ -30,8 +30,6 @@
 local Scratch = {}
 Scratch.__index = Scratch
 
-local config = require("bufsitter")
-
 ---Creates a new scratch buffer, deep-merging `opts` over the global defaults.
 ---Sets the filetype, writes `init_contents`, and calls `on_attach` if provided.
 ---@param opts? bufsitter.scratch.opts
@@ -47,7 +45,7 @@ local config = require("bufsitter")
 ---})
 ---@usage ]]
 function Scratch.new(opts)
-  opts = vim.tbl_deep_extend("force", config.config.scratch, opts or {})
+  opts = vim.tbl_deep_extend("force", require("bufsitter").config.scratch, opts or {})
 
   local bufnr = vim.api.nvim_create_buf(false, true)
   vim.bo[bufnr].filetype = opts.ft

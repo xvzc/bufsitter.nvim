@@ -46,13 +46,11 @@
 ---@field on_error? fun(err: string)
 ---@field hook? fun(bufnr: integer, contents: string[]): string[]?
 
-local config = require("bufsitter")
-
 local M = {}
 
 local function eval_cursor(cursor_fn, bufnr, on_error)
-  local handler = on_error
-    or (config.config and config.config.io and config.config.io.on_error)
+  local config = require("bufsitter").config
+  local handler = on_error or (config and config.io and config.io.on_error)
   if handler then
     local ok, result = pcall(function()
       return cursor_fn:exec(bufnr)
