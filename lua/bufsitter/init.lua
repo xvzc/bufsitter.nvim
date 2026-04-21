@@ -10,11 +10,22 @@
 ---<
 ---@brief ]]
 
+---@class bufsitter.config.scratch.win.opts
+---@field relative? string
+---@field width? number Width in columns, or a ratio 0–1 relative to editor width
+---@field height? number Height in rows, or a ratio 0–1 relative to editor height
+---@field min_width? number Minimum width in columns, or a ratio 0–1 relative to editor width
+---@field min_height? number Minimum height in rows, or a ratio 0–1 relative to editor height
+---@field row? number Top row, or a ratio 0–1 relative to editor height (centered when omitted)
+---@field col? number Left column, or a ratio 0–1 relative to editor width (centered when omitted)
+---@field style? string
+---@field border? string
+
 ---@class bufsitter.config.scratch.opts
 ---@field ft? string
 ---@field init_contents? string[] | fun(): string[]
 ---@field on_attach? fun(bufnr: integer)
----@field win? bufsitter.scratch.win.opts
+---@field win? bufsitter.config.scratch.win.opts
 
 ---@class bufsitter.config.ref.opts
 ---@field expand? boolean
@@ -39,8 +50,12 @@ local default = {
     on_attach = nil,
     win = {
       relative = "editor",
-      width = 0.6,
-      height = 0.4,
+      width = 0.5,
+      height = 0.7,
+      min_width = nil,
+      min_height = nil,
+      row = nil,
+      col = nil,
       style = "minimal",
       border = "rounded",
     },

@@ -12,8 +12,10 @@
 ---@field relative? string
 ---@field width? number Width in columns, or a ratio 0–1 relative to editor width
 ---@field height? number Height in rows, or a ratio 0–1 relative to editor height
----@field row? integer Top row of the window (computed from center when omitted)
----@field col? integer Left column of the window (computed from center when omitted)
+---@field min_width? number Minimum width in columns, or a ratio 0–1 relative to editor width
+---@field min_height? number Minimum height in rows, or a ratio 0–1 relative to editor height
+---@field row? number Top row, or a ratio 0–1 relative to editor height (centered when omitted)
+---@field col? number Left column, or a ratio 0–1 relative to editor width (centered when omitted)
 ---@field style? string
 ---@field border? string
 
@@ -116,9 +118,10 @@ function Scratch:is_visible()
   return self._winid ~= nil and vim.api.nvim_win_is_valid(self._winid)
 end
 
----Opens the floating window. Width and height ratios (0–1) are resolved against
----the current editor size, and the window is centered unless `row`/`col` are
----explicitly provided. Returns the window id, or nil if the buffer is invalid.
+---Opens the floating window. All of `width`, `height`, `row`, and `col` accept
+---either an absolute integer or a 0–1 ratio relative to the editor size.
+---`row` and `col` default to centered when omitted.
+---Returns the window id, or nil if the buffer is invalid.
 ---@param win_opts? bufsitter.scratch.win.opts
 ---@return integer|nil
 ---@usage [[
@@ -126,6 +129,7 @@ end
 ---local s = Scratch.new()
 ---s:show()
 ---s:show({ width = 0.8, height = 0.6 })
+---s:show({ width = 0.8, height = 0.6, row = 0.1, col = 0.1 })
 ---@usage ]]
 function Scratch:show(win_opts)
   if not self:is_valid() then
@@ -135,10 +139,22 @@ function Scratch:show(win_opts)
   local merged = vim.tbl_deep_extend("force", self._win_opts, win_opts or {})
   local width = resolve_dim(merged.width, vim.o.columns)
   local height = resolve_dim(merged.height, vim.o.lines)
-  local wopts = vim.tbl_deep_extend("force", {
-    row = math.floor((vim.o.lines - height) / 2),
-    col = math.floor((vim.o.columns - width) / 2),
-  }, merged, { width = width, height = height })
+  if merged.min_width then
+    width = math.max(width, resolve_dim(merged.min_width, vim.o.columns))
+  end
+  if merged.min_height then
+    height = math.max(height, resolve_dim(merged.min_height, vim.o.lines))
+  end
+  local row = merged.row and resolve_dim(merged.row, vim.o.lines)
+    or math.floor((vim.o.lines - height) / 2)
+  local col = merged.col and resolve_dim(merged.col, vim.o.columns)
+    or math.floor((vim.o.columns - width) / 2)
+  local wopts = vim.tbl_deep_extend("force", merged, {
+    width = width,
+    height = height,
+    row = row,
+    col = col,
+  })
 
   if self:is_visible() then
     vim.api.nvim_win_set_buf(self._winid, self._bufnr)

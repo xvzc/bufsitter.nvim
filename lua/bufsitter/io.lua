@@ -17,6 +17,7 @@
 ---@field end_col? integer
 ---@field on_error? fun(err: string)
 ---@field hook? fun(bufnr: integer, contents: string[]): string[]?
+---@field trim_end? boolean Strip trailing blank lines from the node end when using cursor (default true)
 
 ---@class bufsitter.io.insert.opts
 ---@field cursor? bufsitter.Cursor
@@ -28,6 +29,7 @@
 ---@field hook? fun(bufnr: integer, contents: string[]): string[]?
 ---@field prepend? boolean
 ---@field inline? boolean
+---@field trim_end? boolean Strip trailing blank lines from the node end when using cursor (default true)
 
 ---@class bufsitter.io.delete.opts
 ---@field cursor? bufsitter.Cursor
@@ -36,6 +38,7 @@
 ---@field end_row? integer
 ---@field end_col? integer
 ---@field on_error? fun(err: string)
+---@field trim_end? boolean Strip trailing blank lines from the node end when using cursor (default true)
 
 ---@class bufsitter.io.replace.opts
 ---@field cursor? bufsitter.Cursor
@@ -45,9 +48,12 @@
 ---@field end_col? integer
 ---@field on_error? fun(err: string)
 ---@field hook? fun(bufnr: integer, contents: string[]): string[]?
+---@field trim_end? boolean Strip trailing blank lines from the node end when using cursor (default true)
 
 local M = {}
 
+-- Execute a cursor chain against a buffer, routing errors through on_error or
+-- the global config handler when available. Returns nil on error.
 local function eval_cursor(cursor_fn, bufnr, on_error)
   local config = require("bufsitter").config
   local handler = on_error or (config and config.io and config.io.on_error)
@@ -72,6 +78,27 @@ local function clamp_end(bufnr, er, ec)
     return er - 1, #prev
   end
   return er, ec
+end
+
+-- Clamp the exclusive end, then optionally walk back past trailing blank lines
+-- so the resolved position lands on the last character of real content.
+-- trim defaults to true when nil; pass false to keep the clamped position as-is.
+local function resolve_end(bufnr, er, ec, trim)
+  local row, col = clamp_end(bufnr, er, ec)
+  if trim == false then
+    return row, col
+  end
+  -- col==0 after clamping means we landed at the start of a blank line; step back.
+  while col == 0 and row > 0 do
+    local line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1] or ""
+    if line ~= "" then
+      break
+    end
+    row = row - 1
+    local prev = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1] or ""
+    col = #prev
+  end
+  return row, col
 end
 
 ---Reads text from `bufnr`. Returns one `string[]` per matched node when
@@ -103,7 +130,8 @@ function M.select(bufnr, opts)
     local results = {}
     for _, node in ipairs(items) do
       local sr, sc, er, ec = node:range()
-      er, ec = clamp_end(bufnr, er, ec)
+      -- resolve_end trims trailing blank lines so the selection ends at real content.
+      er, ec = resolve_end(bufnr, er, ec, opts.trim_end)
       local lines = vim.api.nvim_buf_get_text(bufnr, sr, sc, er, ec, {})
       if type(opts.hook) == "function" then
         local res = opts.hook(bufnr, lines)
@@ -118,10 +146,12 @@ function M.select(bufnr, opts)
 
   local lines
   if opts.start_row ~= nil and opts.end_row ~= nil then
+    -- Explicit range: clamp the exclusive end but do not trim (caller owns the coords).
     local er, ec = clamp_end(bufnr, opts.end_row, opts.end_col or 0)
     lines =
       vim.api.nvim_buf_get_text(bufnr, opts.start_row, opts.start_col or 0, er, ec, {})
   else
+    -- No range: read the whole buffer.
     lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
   end
 
@@ -200,6 +230,9 @@ function M.insert(bufnr, contents, opts)
       return
     end
 
+    -- Process nodes in reverse source order so earlier row indices stay valid
+    -- after each insertion shifts subsequent lines down.
+    -- prepend sorts by start row descending; append sorts by end row descending.
     table.sort(items, function(a, b)
       local a_sr, _, a_er = a:range()
       local b_sr, _, b_er = b:range()
@@ -215,39 +248,23 @@ function M.insert(bufnr, contents, opts)
       local sr, sc, er, ec = node:range()
       if opts.prepend then
         if opts.inline then
-          -- attach at exact character position, no newline added
+          -- Attach at the exact start character of the node, no newline added.
           vim.api.nvim_buf_set_text(bufnr, sr, sc, sr, sc, contents)
         else
+          -- Insert as new lines immediately above the node's first row.
           vim.api.nvim_buf_set_lines(bufnr, sr, sr, false, contents)
         end
       else
         if opts.inline then
-          -- attach at exact character position, no newline added
-          if er >= line_count then
-            local last = vim.api.nvim_buf_get_lines(
-              bufnr,
-              line_count - 1,
-              line_count,
-              false
-            )[1] or ""
-            vim.api.nvim_buf_set_text(
-              bufnr,
-              line_count - 1,
-              #last,
-              line_count - 1,
-              #last,
-              contents
-            )
-          else
-            local end_row, end_col = clamp_end(bufnr, er, ec)
-            vim.api.nvim_buf_set_text(bufnr, end_row, end_col, end_row, end_col, contents)
-          end
+          -- Attach right after the last real content character (trailing blank
+          -- lines skipped by resolve_end), no newline added.
+          local end_row, end_col = resolve_end(bufnr, er, ec, opts.trim_end)
+          vim.api.nvim_buf_set_text(bufnr, end_row, end_col, end_row, end_col, contents)
         else
-          -- ec=0 means exclusive end (before row er), so insert at er; otherwise after er
-          local row = (ec == 0) and er or (er + 1)
-          if row > line_count then
-            row = line_count
-          end
+          -- Insert as new lines on the row immediately after the last real
+          -- content row (trailing blank lines skipped by resolve_end).
+          local last_row, _ = resolve_end(bufnr, er, ec, opts.trim_end)
+          local row = math.min(last_row + 1, line_count)
           vim.api.nvim_buf_set_lines(bufnr, row, row, false, contents)
         end
       end
@@ -258,6 +275,7 @@ function M.insert(bufnr, contents, opts)
   if opts.start_row ~= nil and opts.end_row ~= nil then
     if opts.prepend then
       if opts.inline then
+        -- Attach at the exact start position of the range.
         vim.api.nvim_buf_set_text(
           bufnr,
           opts.start_row,
@@ -267,10 +285,12 @@ function M.insert(bufnr, contents, opts)
           contents
         )
       else
+        -- Insert as new lines above start_row.
         vim.api.nvim_buf_set_lines(bufnr, opts.start_row, opts.start_row, false, contents)
       end
     else
       if opts.inline then
+        -- Attach at the exact end position of the range.
         vim.api.nvim_buf_set_text(
           bufnr,
           opts.end_row,
@@ -280,6 +300,7 @@ function M.insert(bufnr, contents, opts)
           contents
         )
       else
+        -- Append a newline after end_col then the contents as a new line.
         local rep = vim.list_extend(vim.deepcopy(contents), { "" })
         vim.api.nvim_buf_set_text(
           bufnr,
@@ -294,6 +315,7 @@ function M.insert(bufnr, contents, opts)
     return
   end
 
+  -- No cursor or range: append after the very last line of the buffer.
   local last_row = vim.api.nvim_buf_line_count(bufnr) - 1
   local last_line = vim.api.nvim_buf_get_lines(bufnr, last_row, last_row + 1, false)[1]
     or ""
@@ -347,6 +369,7 @@ function M.delete(bufnr, opts)
       return
     end
 
+    -- Reverse order so deleting a node doesn't shift the rows of nodes not yet deleted.
     table.sort(items, function(a, b)
       local a_sr = a:range()
       local b_sr = b:range()
@@ -354,13 +377,15 @@ function M.delete(bufnr, opts)
     end)
     for _, node in ipairs(items) do
       local sr, sc, er, ec = node:range()
-      er, ec = clamp_end(bufnr, er, ec)
+      -- resolve_end trims trailing blank lines; the deletion stops at real content.
+      er, ec = resolve_end(bufnr, er, ec, opts.trim_end)
       vim.api.nvim_buf_set_text(bufnr, sr, sc, er, ec, {})
     end
     return
   end
 
   if opts.start_row ~= nil and opts.end_row ~= nil then
+    -- Explicit range: delete exactly the specified span.
     vim.api.nvim_buf_set_text(
       bufnr,
       opts.start_row,
@@ -404,6 +429,7 @@ function M.replace(bufnr, contents, opts)
       return
     end
 
+    -- Reverse order so replacing a node doesn't invalidate rows of later nodes.
     table.sort(items, function(a, b)
       local a_sr = a:range()
       local b_sr = b:range()
@@ -411,13 +437,15 @@ function M.replace(bufnr, contents, opts)
     end)
     for _, node in ipairs(items) do
       local sr, sc, er, ec = node:range()
-      er, ec = clamp_end(bufnr, er, ec)
+      -- resolve_end trims trailing blank lines; replacement covers real content only.
+      er, ec = resolve_end(bufnr, er, ec, opts.trim_end)
       vim.api.nvim_buf_set_text(bufnr, sr, sc, er, ec, vim.deepcopy(contents))
     end
     return
   end
 
   if opts.start_row ~= nil and opts.end_row ~= nil then
+    -- Explicit range: clamp the exclusive end but do not trim (caller owns the coords).
     local er, ec = clamp_end(bufnr, opts.end_row, opts.end_col or 0)
     vim.api.nvim_buf_set_text(
       bufnr,
@@ -457,6 +485,8 @@ function M.clear(bufnr)
   if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
     return
   end
+  -- Replace the entire buffer content with a single empty string,
+  -- which leaves exactly one empty line.
   local last_row = vim.api.nvim_buf_line_count(bufnr) - 1
   local last_line = vim.api.nvim_buf_get_lines(bufnr, last_row, last_row + 1, false)[1]
     or ""

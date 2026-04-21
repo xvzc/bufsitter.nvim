@@ -187,6 +187,48 @@ describe("ft.typst", function()
       assert.are.same(true, injected_row < usage_row)
     end)
 
+    it("io.insert lands immediately after last non-blank line of section", function()
+      io.insert(bufnr, { "// injected" }, {
+        cursor = cursor
+          .root()
+          :children()
+          :filter(section_with(heading_text("Installation")))
+          :first(),
+      })
+      local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+      local injected_idx
+      for i, l in ipairs(lines) do
+        if l == "// injected" then
+          injected_idx = i
+          break
+        end
+      end
+      assert.is_not_nil(injected_idx)
+      local line_before = injected_idx > 1 and lines[injected_idx - 1] or ""
+      assert.are_not.same("", line_before)
+    end)
+
+    it("io.insert inline lands at end of last non-blank character of section", function()
+      io.insert(bufnr, { "[suffix]" }, {
+        inline = true,
+        cursor = cursor
+          .root()
+          :children()
+          :filter(section_with(heading_text("Installation")))
+          :first(),
+      })
+      local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+      local suffixed
+      for _, l in ipairs(lines) do
+        if l:find("%[suffix%]$") then
+          suffixed = l
+          break
+        end
+      end
+      assert.is_not_nil(suffixed)
+      assert.are_not.same("[suffix]", suffixed)
+    end)
+
     it("io.delete removes Installation section, Usage remains", function()
       io.delete(bufnr, {
         cursor = cursor
