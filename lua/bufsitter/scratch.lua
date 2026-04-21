@@ -27,6 +27,7 @@
 ---@field private _bufnr integer
 ---@field private _winid integer|nil
 ---@field private _win_opts bufsitter.scratch.win.opts
+---@field private _augroup integer|nil
 local Scratch = {}
 Scratch.__index = Scratch
 
@@ -69,6 +70,7 @@ function Scratch.new(opts)
   self._bufnr = bufnr
   self._winid = nil
   self._win_opts = opts.win or {}
+  self._augroup = nil
   return self
 end
 
@@ -133,6 +135,17 @@ function Scratch:show(win_opts)
     self._winid = vim.api.nvim_open_win(self._bufnr, true, wopts)
   end
 
+  self._augroup =
+    vim.api.nvim_create_augroup("BufsitterScratch_" .. self._bufnr, { clear = true })
+  vim.api.nvim_create_autocmd("VimResized", {
+    group = self._augroup,
+    callback = function()
+      if self:is_visible() then
+        vim.api.nvim_win_set_config(self._winid, self._win_opts)
+      end
+    end,
+  })
+
   return self._winid
 end
 
@@ -148,6 +161,10 @@ function Scratch:hide()
   end
   vim.api.nvim_win_close(self._winid, false)
   self._winid = nil
+  if self._augroup then
+    pcall(vim.api.nvim_del_augroup_by_id, self._augroup)
+    self._augroup = nil
+  end
 end
 
 ---Hides the window if visible, shows it otherwise.
@@ -175,6 +192,10 @@ end
 function Scratch:delete()
   if self._winid and vim.api.nvim_win_is_valid(self._winid) then
     vim.api.nvim_win_close(self._winid, false)
+  end
+  if self._augroup then
+    pcall(vim.api.nvim_del_augroup_by_id, self._augroup)
+    self._augroup = nil
   end
   if vim.api.nvim_buf_is_valid(self._bufnr) then
     vim.api.nvim_buf_delete(self._bufnr, { force = true })
