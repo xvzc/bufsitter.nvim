@@ -55,6 +55,8 @@ local default = {
   },
 }
 
+M.config = default
+
 ---Initializes bufsitter with the given options, deep-merged over the defaults.
 ---Must be called once before using any other bufsitter API.
 ---@param opts? bufsitter.config.opts
