@@ -10,10 +10,10 @@
 
 ---@class bufsitter.scratch.win.opts
 ---@field relative? string
----@field width? integer
----@field height? integer
----@field row? integer
----@field col? integer
+---@field width? number Width in columns, or a ratio 0–1 relative to editor width
+---@field height? number Height in rows, or a ratio 0–1 relative to editor height
+---@field row? integer Top row of the window (computed from center when omitted)
+---@field col? integer Left column of the window (computed from center when omitted)
 ---@field style? string
 ---@field border? string
 
@@ -27,9 +27,15 @@
 ---@field private _bufnr integer
 ---@field private _winid integer|nil
 ---@field private _win_opts bufsitter.scratch.win.opts
----@field private _augroup integer|nil
 local Scratch = {}
 Scratch.__index = Scratch
+
+local function resolve_dim(value, total)
+  if value and value > 0 and value < 1 then
+    return math.floor(total * value)
+  end
+  return value
+end
 
 ---Creates a new scratch buffer, deep-merging `opts` over the global defaults.
 ---Sets the filetype, writes `init_contents`, and calls `on_attach` if provided.
@@ -70,7 +76,6 @@ function Scratch.new(opts)
   self._bufnr = bufnr
   self._winid = nil
   self._win_opts = opts.win or {}
-  self._augroup = nil
   return self
 end
 
@@ -111,22 +116,29 @@ function Scratch:is_visible()
   return self._winid ~= nil and vim.api.nvim_win_is_valid(self._winid)
 end
 
----Opens the floating window. If it is already visible, reattaches the buffer
----to the existing window. Returns the window id, or nil if the buffer is invalid.
+---Opens the floating window. Width and height ratios (0–1) are resolved against
+---the current editor size, and the window is centered unless `row`/`col` are
+---explicitly provided. Returns the window id, or nil if the buffer is invalid.
 ---@param win_opts? bufsitter.scratch.win.opts
 ---@return integer|nil
 ---@usage [[
 ---local Scratch = require("bufsitter.scratch")
 ---local s = Scratch.new()
 ---s:show()
----s:show({ width = 100, height = 30 })
+---s:show({ width = 0.8, height = 0.6 })
 ---@usage ]]
 function Scratch:show(win_opts)
   if not self:is_valid() then
     return nil
   end
 
-  local wopts = vim.tbl_deep_extend("force", self._win_opts, win_opts or {})
+  local merged = vim.tbl_deep_extend("force", self._win_opts, win_opts or {})
+  local width = resolve_dim(merged.width, vim.o.columns)
+  local height = resolve_dim(merged.height, vim.o.lines)
+  local wopts = vim.tbl_deep_extend("force", {
+    row = math.floor((vim.o.lines - height) / 2),
+    col = math.floor((vim.o.columns - width) / 2),
+  }, merged, { width = width, height = height })
 
   if self:is_visible() then
     vim.api.nvim_win_set_buf(self._winid, self._bufnr)
@@ -134,17 +146,6 @@ function Scratch:show(win_opts)
   else
     self._winid = vim.api.nvim_open_win(self._bufnr, true, wopts)
   end
-
-  self._augroup =
-    vim.api.nvim_create_augroup("BufsitterScratch_" .. self._bufnr, { clear = true })
-  vim.api.nvim_create_autocmd("VimResized", {
-    group = self._augroup,
-    callback = function()
-      if self:is_visible() then
-        vim.api.nvim_win_set_config(self._winid, self._win_opts)
-      end
-    end,
-  })
 
   return self._winid
 end
@@ -161,10 +162,6 @@ function Scratch:hide()
   end
   vim.api.nvim_win_close(self._winid, false)
   self._winid = nil
-  if self._augroup then
-    pcall(vim.api.nvim_del_augroup_by_id, self._augroup)
-    self._augroup = nil
-  end
 end
 
 ---Hides the window if visible, shows it otherwise.
@@ -192,10 +189,6 @@ end
 function Scratch:delete()
   if self._winid and vim.api.nvim_win_is_valid(self._winid) then
     vim.api.nvim_win_close(self._winid, false)
-  end
-  if self._augroup then
-    pcall(vim.api.nvim_del_augroup_by_id, self._augroup)
-    self._augroup = nil
   end
   if vim.api.nvim_buf_is_valid(self._bufnr) then
     vim.api.nvim_buf_delete(self._bufnr, { force = true })

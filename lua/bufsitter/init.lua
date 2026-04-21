@@ -14,7 +14,7 @@
 ---@field ft? string
 ---@field init_contents? string[] | fun(): string[]
 ---@field on_attach? fun(bufnr: integer)
----@field win? vim.api.keyset.win_config
+---@field win? bufsitter.scratch.win.opts
 
 ---@class bufsitter.config.ref.opts
 ---@field expand? boolean
@@ -39,10 +39,8 @@ local default = {
     on_attach = nil,
     win = {
       relative = "editor",
-      width = 80,
-      height = 20,
-      row = 5,
-      col = 10,
+      width = 0.6,
+      height = 0.4,
       style = "minimal",
       border = "rounded",
     },
