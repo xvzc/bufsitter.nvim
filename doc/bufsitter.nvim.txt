@@ -1,0 +1,618 @@
+==============================================================================
+Table of Contents                                           *bufsitter.contents*
+
+bufsitter.nvim ····················································· |bufsitter|
+Cursor ······················································ |bufsitter.cursor|
+IO ······························································ |bufsitter.io|
+Ref ···························································· |bufsitter.ref|
+Scratch ···················································· |bufsitter.scratch|
+
+==============================================================================
+bufsitter.nvim                                                       *bufsitter*
+
+ Treesitter-powered buffer manipulation for Neovim.
+
+ Quick start:
+>lua
+   require("bufsitter").setup()
+<
+
+bufsitter.config.scratch.opts                    *bufsitter.config.scratch.opts*
+
+    Fields: ~
+        {ft?}             (string)
+        {init_contents?}  (string[]|fun():string[])
+        {on_attach?}      (fun(bufnr:integer))
+        {win?}            (vim.api.keyset.win_config)
+
+
+bufsitter.config.ref.opts                            *bufsitter.config.ref.opts*
+
+    Fields: ~
+        {expand?}  (boolean)
+
+
+bufsitter.config.io.opts                              *bufsitter.config.io.opts*
+
+    Fields: ~
+        {on_error?}  (fun(err:string))
+
+
+bufsitter.config.opts                                    *bufsitter.config.opts*
+
+    Fields: ~
+        {scratch?}  (bufsitter.config.scratch.opts)
+        {ref?}      (bufsitter.config.ref.opts)
+        {io?}       (bufsitter.config.io.opts)
+
+
+Bufsitter                                                            *Bufsitter*
+
+    Fields: ~
+        {config}  (bufsitter.config.opts)
+
+
+M.setup({opts?})                                               *bufsitter.setup*
+    Initializes bufsitter with the given options, deep-merged over the defaults.
+    Must be called once before using any other bufsitter API.
+
+    Parameters: ~
+        {opts?}  (bufsitter.config.opts)
+
+    Usage: ~
+>lua
+        require("bufsitter").setup({
+          scratch = { ft = "markdown" },
+          io = {
+            on_error = function(err)
+              vim.notify(err, vim.log.levels.ERROR)
+            end,
+          },
+        })
+<
+
+
+M.config                                                      *bufsitter.config*
+
+    Type: ~
+        (bufsitter.config.opts)
+
+
+==============================================================================
+Cursor                                                        *bufsitter.cursor*
+
+Lazy treesitter node traversal API.
+
+A cursor is a reusable, lazy query — it describes a traversal chain but does
+not touch any buffer until |bufsitter.Cursor:exec| is called. The same cursor
+instance can be passed to multiple |bufsitter.io| functions or evaluated
+against different buffers without rebuilding the chain.
+
+Two cursor types exist:
+
+ - |bufsitter.MultiCursor|  — holds zero or more nodes
+ - |bufsitter.SingleCursor| — holds at most one node
+
+|bufsitter.Cursor:exec| evaluates the chain and returns a flat list of TSNode
+values matched in that buffer at that moment. Each TSNode exposes the standard
+treesitter API (`:type()`, `:range()`, `:named_child()`, etc.).
+
+Entry points are |bufsitter.cursor.root| and |bufsitter.cursor.query|.
+Cursors are passed to `io.*` functions via the `cursor` field in opts.
+
+bufsitter.cursor.opts                                    *bufsitter.cursor.opts*
+
+    Fields: ~
+        {names?}  (string[])
+        {types?}  (string[])
+
+
+bufsitter.cursor.fn                                        *bufsitter.cursor.fn*
+
+    Type: ~
+        fun(bufnr:integer,node:TSNode):boolean
+
+
+bufsitter.Cursor                                              *bufsitter.Cursor*
+
+    Fields: ~
+
+
+
+bufsitter.MultiCursor : bufsitter                        *bufsitter.MultiCursor*
+
+
+bufsitter.SingleCursor : bufsitter                      *bufsitter.SingleCursor*
+
+
+M.root()                                                 *bufsitter.cursor.root*
+    Returns a cursor seeded with the root node of the buffer's syntax tree.
+
+    Returns: ~
+        (bufsitter.MultiCursor)
+
+    Usage: ~
+>lua
+        local cursor = require("bufsitter.cursor")
+        local bufnr = vim.api.nvim_get_current_buf()
+        local nodes = cursor.root():children():exec(bufnr)
+<
+
+
+M.query({query_str})                                    *bufsitter.cursor.query*
+    Returns a cursor seeded with all nodes captured by the given treesitter
+    query string, evaluated against the buffer's filetype.
+
+    Parameters: ~
+        {query_str}  (string)
+
+    Returns: ~
+        (bufsitter.MultiCursor)
+
+    Usage: ~
+>lua
+        local cursor = require("bufsitter.cursor")
+        local bufnr = vim.api.nvim_get_current_buf()
+        local nodes = cursor.query("(function_declaration) @fn"):exec(bufnr)
+<
+
+
+==============================================================================
+IO                                                                *bufsitter.io*
+
+Buffer read/write operations driven by a cursor or explicit row/col range.
+
+Each function accepts an `opts` table with either a `cursor` field
+(a |bufsitter.Cursor|) or explicit `start_row`/`end_row` coordinates.
+When `cursor` is given, the operation is applied to every node the cursor
+resolves to. An optional `hook` can transform the content before it is
+written, and `on_error` can intercept errors thrown by the cursor.
+
+bufsitter.io.select.opts                              *bufsitter.io.select.opts*
+
+    Fields: ~
+        {cursor?}     (bufsitter.Cursor)
+        {start_row?}  (integer)
+        {start_col?}  (integer)
+        {end_row?}    (integer)
+        {end_col?}    (integer)
+        {on_error?}   (fun(err:string))
+        {hook?}       (fun(bufnr:integer,contents:string[]):string[])
+
+
+bufsitter.io.insert.opts                              *bufsitter.io.insert.opts*
+
+    Fields: ~
+        {cursor?}     (bufsitter.Cursor)
+        {start_row?}  (integer)
+        {start_col?}  (integer)
+        {end_row?}    (integer)
+        {end_col?}    (integer)
+        {on_error?}   (fun(err:string))
+        {hook?}       (fun(bufnr:integer,contents:string[]):string[])
+
+
+bufsitter.io.delete.opts                              *bufsitter.io.delete.opts*
+
+    Fields: ~
+        {cursor?}     (bufsitter.Cursor)
+        {start_row?}  (integer)
+        {start_col?}  (integer)
+        {end_row?}    (integer)
+        {end_col?}    (integer)
+        {on_error?}   (fun(err:string))
+
+
+bufsitter.io.replace.opts                            *bufsitter.io.replace.opts*
+
+    Fields: ~
+        {cursor?}     (bufsitter.Cursor)
+        {start_row?}  (integer)
+        {start_col?}  (integer)
+        {end_row?}    (integer)
+        {end_col?}    (integer)
+        {on_error?}   (fun(err:string))
+        {hook?}       (fun(bufnr:integer,contents:string[]):string[])
+
+
+M.select({bufnr}, {opts})                                  *bufsitter.io.select*
+    Reads text from `bufnr`. Returns one `string[]` per matched node when
+    `cursor` is used, or a single-element wrapper otherwise.
+    Returns `nil` if the buffer is invalid or the cursor yields nothing.
+
+    Parameters: ~
+        {bufnr}  (integer)
+        {opts}   (bufsitter.io.select.opts)
+
+    Returns: ~
+        (string[][]|nil)
+
+    Usage: ~
+>lua
+        local io = require("bufsitter.io")
+        local cursor = require("bufsitter.cursor")
+        local bufnr = vim.api.nvim_get_current_buf()
+        local results = io.select(bufnr, {
+          cursor = cursor.root():children({ types = { "function_declaration" } }),
+        })
+        -- results[1] == { "func foo() {", "  ...", "}" }
+<
+
+
+M.select_text({bufnr}, {opts?})                       *bufsitter.io.select_text*
+    Like `select`, but joins each node's lines with `\n` and returns a flat
+    `string[]` — one string per matched node.
+
+    Parameters: ~
+        {bufnr}  (integer)
+        {opts?}  (bufsitter.io.select.opts)
+
+    Returns: ~
+        (string[]|nil)
+
+    Usage: ~
+>lua
+        local io = require("bufsitter.io")
+        local cursor = require("bufsitter.cursor")
+        local bufnr = vim.api.nvim_get_current_buf()
+        local texts = io.select_text(bufnr, {
+          cursor = cursor.root():children({ types = { "function_declaration" } }),
+        })
+        -- texts[1] == "func foo() {\n  ...\n}"
+<
+
+
+M.insert({bufnr}, {contents}, {opts?})                     *bufsitter.io.insert*
+    Inserts `contents` into `bufnr`. When `prepend` is false (default) content
+    is placed after each target; when true, before. `inline` inserts at the
+    exact character position without adding a new line. Without a cursor or
+    range, appends to the end of the buffer.
+
+    Parameters: ~
+        {bufnr}     (integer)
+        {contents}  (string[])
+        {opts?}     (bufsitter.io.insert.opts)
+
+    Usage: ~
+>lua
+        local io = require("bufsitter.io")
+        local cursor = require("bufsitter.cursor")
+        local bufnr = vim.api.nvim_get_current_buf()
+        -- append after the first function
+        io.insert(bufnr, { "-- generated" }, {
+          cursor = cursor.root():children({ types = { "function_declaration" } }):first(),
+        })
+        -- prepend before it
+        io.insert(bufnr, { "-- generated" }, {
+          prepend = true,
+          cursor = cursor.root():children({ types = { "function_declaration" } }):first(),
+        })
+<
+
+
+M.insert_text({bufnr}, {str}, {opts?})                *bufsitter.io.insert_text*
+    Convenience wrapper around `insert` that splits `str` on newlines first.
+
+    Parameters: ~
+        {bufnr}  (integer)
+        {str}    (string)
+        {opts?}  (bufsitter.io.insert.opts)
+
+    Usage: ~
+>lua
+        local io = require("bufsitter.io")
+        local cursor = require("bufsitter.cursor")
+        local bufnr = vim.api.nvim_get_current_buf()
+        io.insert_text(bufnr, "-- line one\n-- line two", {
+          cursor = cursor.root():children():first(),
+        })
+<
+
+
+M.delete({bufnr}, {opts?})                                 *bufsitter.io.delete*
+    Deletes text from `bufnr`. Nodes are deleted in reverse source order to
+    preserve row indices for subsequent deletions.
+
+    Parameters: ~
+        {bufnr}  (integer)
+        {opts?}  (bufsitter.io.delete.opts)
+
+    Usage: ~
+>lua
+        local io = require("bufsitter.io")
+        local cursor = require("bufsitter.cursor")
+        local bufnr = vim.api.nvim_get_current_buf()
+        io.delete(bufnr, {
+          cursor = cursor.root():children({ types = { "function_declaration" } }):first(),
+        })
+<
+
+
+M.replace({bufnr}, {contents}, {opts?})                   *bufsitter.io.replace*
+    Replaces the text of each matched node or range with `contents`.
+    Multiple matches are replaced in reverse source order to preserve indices.
+
+    Parameters: ~
+        {bufnr}     (integer)
+        {contents}  (string[])
+        {opts?}     (bufsitter.io.replace.opts)
+
+    Usage: ~
+>lua
+        local io = require("bufsitter.io")
+        local cursor = require("bufsitter.cursor")
+        local bufnr = vim.api.nvim_get_current_buf()
+        io.replace(bufnr, { "func foo() {}", "}" }, {
+          cursor = cursor.root():children({ types = { "function_declaration" } }):first(),
+        })
+<
+
+
+M.replace_text({bufnr}, {str}, {opts?})              *bufsitter.io.replace_text*
+    Convenience wrapper around `replace` that splits `str` on newlines first.
+
+    Parameters: ~
+        {bufnr}  (integer)
+        {str}    (string)
+        {opts?}  (bufsitter.io.replace.opts)
+
+    Usage: ~
+>lua
+        local io = require("bufsitter.io")
+        local cursor = require("bufsitter.cursor")
+        local bufnr = vim.api.nvim_get_current_buf()
+        io.replace_text(bufnr, "func foo() {}\n}", {
+          cursor = cursor.root():children():first(),
+        })
+<
+
+
+M.clear({bufnr})                                            *bufsitter.io.clear*
+    Clears all content from `bufnr`, leaving a single empty line.
+
+    Parameters: ~
+        {bufnr}  (integer)
+
+    Usage: ~
+>lua
+        local io = require("bufsitter.io")
+        local bufnr = vim.api.nvim_get_current_buf()
+        io.clear(bufnr)
+<
+
+
+==============================================================================
+Ref                                                              *bufsitter.ref*
+
+Generates a human-readable reference string for the current buffer or
+visual selection, in the form `path:LN` or `path:LN~LM`.
+
+Useful for inserting source references into scratch buffers or prompts.
+When `expand` is true, the path is expanded to an absolute path;
+otherwise it is relative to the home directory (`~`).
+
+bufsitter.ref.opts                                          *bufsitter.ref.opts*
+
+    Fields: ~
+        {expand?}  (boolean)
+
+
+M.visual_selection({opts?})                     *bufsitter.ref.visual_selection*
+    Returns a reference string for the most recent visual selection.
+    Format: `path:LN` for a single line, `path:LN~LM` for a range.
+    Falls back to the buffer name alone if no selection marks are set.
+
+    Parameters: ~
+        {opts?}  (bufsitter.ref.opts)
+
+    Returns: ~
+        (string)
+
+    Usage: ~
+>lua
+        -- in a keymap callback, after making a visual selection
+        local ref = require("bufsitter.ref").visual_selection()
+        -- "~/project/main.lua:L10~L15"
+<
+
+
+M.get({opts?})                                               *bufsitter.ref.get*
+    Returns a reference string for the current context: delegates to
+    `visual_selection` when in a visual mode, otherwise to `buffer`.
+
+    Parameters: ~
+        {opts?}  (bufsitter.ref.opts)
+
+    Returns: ~
+        (string)
+
+    Usage: ~
+>lua
+        vim.keymap.set({ "n", "v" }, "<leader>r", function()
+          local ref = require("bufsitter.ref").get()
+          vim.fn.setreg("+", ref)
+        end)
+<
+
+
+M.buffer({opts?})                                         *bufsitter.ref.buffer*
+    Returns the name of the current buffer. Returns `"[No Name]"` for unnamed
+    buffers. With `expand = true`, returns the absolute path.
+
+    Parameters: ~
+        {opts?}  (bufsitter.ref.opts)
+
+    Returns: ~
+        (string)
+
+    Usage: ~
+>lua
+        local ref = require("bufsitter.ref")
+        ref.buffer()                    -- "~/project/main.lua"
+        ref.buffer({ expand = true })   -- "/Users/user/project/main.lua"
+<
+
+
+==============================================================================
+Scratch                                                      *bufsitter.scratch*
+
+Floating scratch buffer with show/hide/toggle lifecycle management.
+
+A `Scratch` is a unlisted, non-file buffer displayed in a floating window.
+Window position and size are configured via |bufsitter.scratch.win.opts|.
+Initial content can be provided as a string array or a function, and an
+`on_attach` callback runs once on buffer creation.
+
+bufsitter.scratch.win.opts                          *bufsitter.scratch.win.opts*
+
+    Fields: ~
+        {relative?}  (string)
+        {width?}     (integer)
+        {height?}    (integer)
+        {row?}       (integer)
+        {col?}       (integer)
+        {style?}     (string)
+        {border?}    (string)
+
+
+bufsitter.scratch.opts                                  *bufsitter.scratch.opts*
+
+    Fields: ~
+        {ft?}             (string)
+        {init_contents?}  (string[]|fun():string[])
+        {on_attach?}      (fun(bufnr:integer))
+        {win?}            (bufsitter.scratch.win.opts)
+
+
+bufsitter.Scratch                                            *bufsitter.Scratch*
+
+    Fields: ~
+
+
+
+Scratch.new({opts?})                                     *bufsitter.scratch.new*
+    Creates a new scratch buffer, deep-merging `opts` over the global defaults.
+    Sets the filetype, writes `init_contents`, and calls `on_attach` if provided.
+
+    Parameters: ~
+        {opts?}  (bufsitter.scratch.opts)
+
+    Returns: ~
+        (bufsitter.Scratch)
+
+    Usage: ~
+>lua
+        local Scratch = require("bufsitter.scratch")
+        local s = Scratch.new({
+          ft = "markdown",
+          init_contents = { "# Notes", "" },
+          on_attach = function(bufnr)
+            vim.keymap.set("n", "q", "<cmd>close<cr>", { buffer = bufnr })
+          end,
+        })
+<
+
+
+Scratch:bufnr()                                        *bufsitter.scratch:bufnr*
+    Returns the buffer number of the scratch buffer.
+
+    Returns: ~
+        (integer)
+
+    Usage: ~
+>lua
+        local Scratch = require("bufsitter.scratch")
+        local s = Scratch.new()
+        local bufnr = s:bufnr()
+<
+
+
+Scratch:is_valid()                                  *bufsitter.scratch:is_valid*
+    Returns true if the underlying buffer still exists.
+
+    Returns: ~
+        (boolean)
+
+    Usage: ~
+>lua
+        local Scratch = require("bufsitter.scratch")
+        local s = Scratch.new()
+        if s:is_valid() then
+          s:show()
+        end
+<
+
+
+Scratch:is_visible()                              *bufsitter.scratch:is_visible*
+    Returns true if the floating window is currently open.
+
+    Returns: ~
+        (boolean)
+
+    Usage: ~
+>lua
+        local Scratch = require("bufsitter.scratch")
+        local s = Scratch.new()
+        if not s:is_visible() then
+          s:show()
+        end
+<
+
+
+Scratch:show({win_opts?})                               *bufsitter.scratch:show*
+    Opens the floating window. If it is already visible, reattaches the buffer
+    to the existing window. Returns the window id, or nil if the buffer is invalid.
+
+    Parameters: ~
+        {win_opts?}  (bufsitter.scratch.win.opts)
+
+    Returns: ~
+        (integer|nil)
+
+    Usage: ~
+>lua
+        local Scratch = require("bufsitter.scratch")
+        local s = Scratch.new()
+        s:show()
+        s:show({ width = 100, height = 30 })
+<
+
+
+Scratch:hide()                                          *bufsitter.scratch:hide*
+    Closes the floating window without deleting the buffer.
+
+    Usage: ~
+>lua
+        local Scratch = require("bufsitter.scratch")
+        local s = Scratch.new()
+        s:hide()
+<
+
+
+Scratch:toggle({win_opts?})                           *bufsitter.scratch:toggle*
+    Hides the window if visible, shows it otherwise.
+
+    Parameters: ~
+        {win_opts?}  (bufsitter.scratch.win.opts)
+
+    Usage: ~
+>lua
+        local Scratch = require("bufsitter.scratch")
+        local s = Scratch.new()
+        vim.keymap.set("n", "<leader>s", function() s:toggle() end)
+<
+
+
+Scratch:delete()                                      *bufsitter.scratch:delete*
+    Closes the floating window and deletes the buffer. The instance should not
+    be used after calling this.
+
+    Usage: ~
+>lua
+        local Scratch = require("bufsitter.scratch")
+        local s = Scratch.new()
+        s:delete()
+<
+
+
+vim:tw=78:ts=8:noet:ft=help:norl:
