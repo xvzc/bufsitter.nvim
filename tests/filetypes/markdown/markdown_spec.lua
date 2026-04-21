@@ -291,10 +291,11 @@ describe("ft.markdown", function()
           .root()
           :children({ types = { "section" } })
           :children({ types = { "atx_heading" } })
-          :children({ types = { "inline" }, texts = { "Shopping List" } })
+          :children({ names = { "heading_content" }, texts = { "Shopping List" } })
           :first()
           :parent()
-          :parent(),
+          :siblings({ types = { "list" } })
+          :last(),
       })
 
       local actual = vim.api.nvim_buf_get_lines(example_bufnr, 0, -1, false)

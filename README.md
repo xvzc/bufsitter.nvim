@@ -85,7 +85,8 @@ io.insert(bufnr, { "- milk" }, {
     :children({ names = { "heading_content" }, texts = { "Shopping List" } })
     :first()
     :parent()
-    :parent(),
+    :siblings({ types = { "list" } })
+    :last(),
 })
 ```
 
