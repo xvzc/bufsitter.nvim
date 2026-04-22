@@ -8,15 +8,6 @@ bufsitter provides a chainable cursor API for traversing syntax trees, and a set
 
 > **Note:** bufsitter depends on [nvim-treesitter](https://github.com/nvim-treesitter/nvim-treesitter), which is currently archived. Future Neovim versions may introduce breaking changes that affect stability.
 
-## Features
-
-- Chainable cursor API for traversing treesitter syntax trees
-- IO primitives for reading, writing, and transforming buffer content by node range
-- Filter nodes by type, field name, or text content
-- Inline and line-level insert, delete, select, and replace operations
-- Floating scratch buffer with configurable window options
-- Buffer and visual-selection reference strings for use in prompts or notes
-
 ## Requirements
 
 - Neovim >= 0.12.1
@@ -66,8 +57,6 @@ require("bufsitter").setup({
 ```
 
 ## Usage
-
-### Insert into a section by heading text
 
 Given a markdown buffer:
 
