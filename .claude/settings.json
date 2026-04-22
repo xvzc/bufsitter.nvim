@@ -7,7 +7,7 @@
           {
             "type": "command",
             "if": "Bash(git commit*)",
-            "command": "make test && make docs && git add doc/",
+            "command": "make clean && make test && make docs && git add doc/",
             "timeout": 120,
             "statusMessage": "Running tests and generating docs..."
           },
