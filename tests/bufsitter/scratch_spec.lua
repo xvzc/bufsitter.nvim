@@ -28,6 +28,7 @@ describe("scratch", function()
           called_with = b
         end,
       })
+      s:show()
       assert.are.same(s:bufnr(), called_with)
       s:delete()
     end)

@@ -70,14 +70,45 @@ function Scratch.new(opts)
     vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
   end
 
-  if type(opts.on_attach) == "function" then
-    opts.on_attach(bufnr)
-  end
-
   local self = setmetatable({}, Scratch)
   self._bufnr = bufnr
   self._winid = nil
   self._win_opts = opts.win or {}
+
+  local group =
+    vim.api.nvim_create_augroup("bufsitter_scratch_" .. bufnr, { clear = true })
+
+  -- Re-layout the floating window when the editor is resized (e.g. tmux pane resize).
+  vim.api.nvim_create_autocmd("VimResized", {
+    group = group,
+    callback = function()
+      if self:is_visible() then
+        self:show()
+      end
+    end,
+  })
+  -- Run on_attach once when the buffer first enters a window, so LSP and
+  -- treesitter can attach with a valid window context.
+  if type(opts.on_attach) == "function" then
+    vim.api.nvim_create_autocmd("BufWinEnter", {
+      group = group,
+      buffer = bufnr,
+      once = true,
+      callback = function()
+        opts.on_attach(bufnr)
+      end,
+    })
+  end
+  -- Clean up the augroup when the buffer is deleted.
+  vim.api.nvim_create_autocmd("BufDelete", {
+    group = group,
+    buffer = bufnr,
+    once = true,
+    callback = function()
+      pcall(vim.api.nvim_del_augroup_by_id, group)
+    end,
+  })
+
   return self
 end
 
@@ -173,10 +204,9 @@ end
 ---s:hide()
 ---@usage ]]
 function Scratch:hide()
-  if not self._winid or not vim.api.nvim_win_is_valid(self._winid) then
-    return
+  for _, winid in ipairs(vim.fn.win_findbuf(self._bufnr)) do
+    vim.api.nvim_win_close(winid, false)
   end
-  vim.api.nvim_win_close(self._winid, false)
   self._winid = nil
 end
 
