@@ -58,6 +58,8 @@ require("bufsitter").setup({
 
 ## Usage
 
+### Insert into a section by heading text
+
 Given a markdown buffer:
 
 ```markdown
