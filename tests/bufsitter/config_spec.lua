@@ -7,8 +7,8 @@ describe("config", function()
 
   describe("setup", function()
     describe("defaults", function()
-      it("should set scratch.ft to markdown", function()
-        assert.are.same("markdown", config.config.scratch.ft)
+      it("should set scratch.ext to md", function()
+        assert.are.same("md", config.config.scratch.ext)
       end)
 
       it("should set scratch.init_contents as a table", function()
@@ -17,6 +17,10 @@ describe("config", function()
 
       it("should set scratch.on_attach to nil", function()
         assert.are.same(nil, config.config.scratch.on_attach)
+      end)
+
+      it("should set scratch.force_quit to true", function()
+        assert.is_true(config.config.scratch.force_quit)
       end)
 
       it("should set default win options", function()

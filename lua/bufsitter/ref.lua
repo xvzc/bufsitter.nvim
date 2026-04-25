@@ -10,20 +10,13 @@
 
 ---@class bufsitter.ref.opts
 ---@field expand? boolean
+---@field hook? fun(ref: string): string
 
 local M = {}
 
----Returns a reference string for the most recent visual selection.
----Format: `path:LN` for a single line, `path:LN~LM` for a range.
----Falls back to the buffer name alone if no selection marks are set.
 ---@param opts? bufsitter.ref.opts
 ---@return string
----@usage [[
------ in a keymap callback, after making a visual selection
----local ref = require("bufsitter.ref").visual_selection()
------ "~/project/main.lua:L10~L15"
----@usage ]]
-function M.visual_selection(opts)
+local function visual_selection(opts)
   opts = opts or {}
 
   -- 1. Exit visual mode FIRST to force update of '< and '> marks
@@ -45,34 +38,9 @@ function M.visual_selection(opts)
   return s == e and ("%s:L%d"):format(name, s) or ("%s:L%d~L%d"):format(name, s, e)
 end
 
----Returns a reference string for the current context: delegates to
----`visual_selection` when in a visual mode, otherwise to `buffer`.
 ---@param opts? bufsitter.ref.opts
 ---@return string
----@usage [[
----vim.keymap.set({ "n", "v" }, "<leader>r", function()
----  local ref = require("bufsitter.ref").get()
----  vim.fn.setreg("+", ref)
----end)
----@usage ]]
-function M.get(opts)
-  local mode = vim.api.nvim_get_mode().mode
-  if mode == "v" or mode == "V" or mode == "\22" then
-    return M.visual_selection(opts)
-  end
-  return M.buffer(opts)
-end
-
----Returns the name of the current buffer. Returns `"[No Name]"` for unnamed
----buffers. With `expand = true`, returns the absolute path.
----@param opts? bufsitter.ref.opts
----@return string
----@usage [[
----local ref = require("bufsitter.ref")
----ref.buffer()                    -- "~/project/main.lua"
----ref.buffer({ expand = true })   -- "/Users/user/project/main.lua"
----@usage ]]
-function M.buffer(opts)
+local function buffer(opts)
   opts = opts or {}
   local expand = opts.expand or false
   local buf_name = vim.api.nvim_buf_get_name(0)
@@ -86,6 +54,38 @@ function M.buffer(opts)
     buf_name = vim.fn.fnamemodify(buf_name, ":~")
   end
   return buf_name
+end
+
+---Returns a reference string for the current context: delegates to
+---`visual_selection` when in a visual mode, otherwise to `buffer`.
+---An optional `hook` function receives the final reference string and may
+---return a modified path before it is returned to the caller.
+---@param opts? bufsitter.ref.opts
+---@return string
+---@usage [[
+---vim.keymap.set({ "n", "v" }, "<leader>r", function()
+---  local ref = require("bufsitter.ref").get({
+---    hook = function(r)
+---      return r:gsub("^/home/user", "~")
+---    end,
+---  })
+---  vim.fn.setreg("+", ref)
+---end)
+---@usage ]]
+function M.get(opts)
+  local mode = vim.api.nvim_get_mode().mode
+  local result
+  if mode == "v" or mode == "V" or mode == "\22" then
+    result = visual_selection(opts)
+  else
+    result = buffer(opts)
+  end
+
+  if opts and opts.hook then
+    result = opts.hook(result)
+  end
+
+  return result
 end
 
 return M

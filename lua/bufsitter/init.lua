@@ -22,7 +22,8 @@
 ---@field border? string
 
 ---@class bufsitter.config.scratch.opts
----@field ft? string
+---@field ext? string File extension used to name the buffer (e.g. "typ", "md"). Sets buftype to "acwrite" so LSP can attach without writing to disk. Defaults to "md".
+---@field force_quit? boolean Suppress unsaved-changes prompt: no-op `:w` and clear modified on `QuitPre`. Defaults to true.
 ---@field init_contents? string[] | fun(): string[]
 ---@field on_attach? fun(bufnr: integer)
 ---@field win? bufsitter.config.scratch.win.opts
@@ -45,7 +46,8 @@ local M = {}
 ---@type bufsitter.config.opts
 local default = {
   scratch = {
-    ft = "markdown",
+    ext = "md",
+    force_quit = true,
     init_contents = {},
     on_attach = nil,
     win = {

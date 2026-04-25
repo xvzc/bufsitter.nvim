@@ -34,7 +34,8 @@ bufsitter.config.scratch.win.opts            *bufsitter.config.scratch.win.opts*
 bufsitter.config.scratch.opts                    *bufsitter.config.scratch.opts*
 
     Fields: ~
-        {ft?}             (string)
+        {ext?}            (string)                             File extension used to name the buffer (e.g. "typ", "md"). Sets buftype to "acwrite" so LSP can attach without writing to disk. Defaults to "md".
+        {force_quit?}     (boolean)                            Suppress unsaved-changes prompt: no-op `:w` and clear modified on `QuitPre`. Defaults to true.
         {init_contents?}  (string[]|fun():string[])
         {on_attach?}      (fun(bufnr:integer))
         {win?}            (bufsitter.config.scratch.win.opts)
@@ -411,30 +412,14 @@ bufsitter.ref.opts                                          *bufsitter.ref.opts*
 
     Fields: ~
         {expand?}  (boolean)
-
-
-M.visual_selection({opts?})                     *bufsitter.ref.visual_selection*
-    Returns a reference string for the most recent visual selection.
-    Format: `path:LN` for a single line, `path:LN~LM` for a range.
-    Falls back to the buffer name alone if no selection marks are set.
-
-    Parameters: ~
-        {opts?}  (bufsitter.ref.opts)
-
-    Returns: ~
-        (string)
-
-    Usage: ~
->lua
-        -- in a keymap callback, after making a visual selection
-        local ref = require("bufsitter.ref").visual_selection()
-        -- "~/project/main.lua:L10~L15"
-<
+        {hook?}    (fun(ref:string):string)
 
 
 M.get({opts?})                                               *bufsitter.ref.get*
     Returns a reference string for the current context: delegates to
     `visual_selection` when in a visual mode, otherwise to `buffer`.
+    An optional `hook` function receives the final reference string and may
+    return a modified path before it is returned to the caller.
 
     Parameters: ~
         {opts?}  (bufsitter.ref.opts)
@@ -445,27 +430,13 @@ M.get({opts?})                                               *bufsitter.ref.get*
     Usage: ~
 >lua
         vim.keymap.set({ "n", "v" }, "<leader>r", function()
-          local ref = require("bufsitter.ref").get()
+          local ref = require("bufsitter.ref").get({
+            hook = function(r)
+              return r:gsub("^/home/user", "~")
+            end,
+          })
           vim.fn.setreg("+", ref)
         end)
-<
-
-
-M.buffer({opts?})                                         *bufsitter.ref.buffer*
-    Returns the name of the current buffer. Returns `"[No Name]"` for unnamed
-    buffers. With `expand = true`, returns the absolute path.
-
-    Parameters: ~
-        {opts?}  (bufsitter.ref.opts)
-
-    Returns: ~
-        (string)
-
-    Usage: ~
->lua
-        local ref = require("bufsitter.ref")
-        ref.buffer()                    -- "~/project/main.lua"
-        ref.buffer({ expand = true })   -- "/Users/user/project/main.lua"
 <
 
 
@@ -496,7 +467,8 @@ bufsitter.scratch.win.opts                          *bufsitter.scratch.win.opts*
 bufsitter.scratch.opts                                  *bufsitter.scratch.opts*
 
     Fields: ~
-        {ft?}             (string)
+        {ext?}            (string)                      File extension used to name the buffer (e.g. "typ", "md"). Sets buftype to "acwrite" so LSP can attach without writing to disk. Defaults to "md".
+        {force_quit?}     (boolean)                     Suppress unsaved-changes prompt: no-op `:w` and clear modified on `QuitPre`. Defaults to true.
         {init_contents?}  (string[]|fun():string[])
         {on_attach?}      (fun(bufnr:integer))
         {win?}            (bufsitter.scratch.win.opts)
@@ -546,7 +518,8 @@ Scratch:bufnr()                                        *bufsitter.scratch:bufnr*
 
 
 Scratch:is_valid()                                  *bufsitter.scratch:is_valid*
-    Returns true if the underlying buffer still exists.
+    Returns true if the underlying buffer still exists and is loaded.
+    An unloaded `nofile` buffer has lost its content and is treated as invalid.
 
     Returns: ~
         (boolean)
@@ -581,13 +554,15 @@ Scratch:show({win_opts?})                               *bufsitter.scratch:show*
     Opens the floating window. All of `width`, `height`, `row`, and `col` accept
     either an absolute integer or a 0–1 ratio relative to the editor size.
     `row` and `col` default to centered when omitted.
-    Returns the window id, or nil if the buffer is invalid.
+    If the buffer was deleted externally (e.g. via `:bd`), it is recreated from
+    `init_contents` before the window is opened.
+    Returns the window id.
 
     Parameters: ~
         {win_opts?}  (bufsitter.scratch.win.opts)
 
     Returns: ~
-        (integer|nil)
+        (integer)
 
     Usage: ~
 >lua

@@ -30,10 +30,8 @@ bufsitter.io.select	bufsitter.nvim.txt	/*bufsitter.io.select*
 bufsitter.io.select.opts	bufsitter.nvim.txt	/*bufsitter.io.select.opts*
 bufsitter.io.select_text	bufsitter.nvim.txt	/*bufsitter.io.select_text*
 bufsitter.ref	bufsitter.nvim.txt	/*bufsitter.ref*
-bufsitter.ref.buffer	bufsitter.nvim.txt	/*bufsitter.ref.buffer*
 bufsitter.ref.get	bufsitter.nvim.txt	/*bufsitter.ref.get*
 bufsitter.ref.opts	bufsitter.nvim.txt	/*bufsitter.ref.opts*
-bufsitter.ref.visual_selection	bufsitter.nvim.txt	/*bufsitter.ref.visual_selection*
 bufsitter.scratch	bufsitter.nvim.txt	/*bufsitter.scratch*
 bufsitter.scratch.new	bufsitter.nvim.txt	/*bufsitter.scratch.new*
 bufsitter.scratch.opts	bufsitter.nvim.txt	/*bufsitter.scratch.opts*

@@ -20,7 +20,8 @@
 ---@field border? string
 
 ---@class bufsitter.scratch.opts
----@field ft? string
+---@field ext? string File extension used to name the buffer (e.g. "typ", "md"). Sets buftype to "acwrite" so LSP can attach without writing to disk. Defaults to "md".
+---@field force_quit? boolean Suppress unsaved-changes prompt: no-op `:w` and clear modified on `QuitPre`. Defaults to true.
 ---@field init_contents? string[] | fun(): string[]
 ---@field on_attach? fun(bufnr: integer)
 ---@field win? bufsitter.scratch.win.opts
@@ -29,6 +30,10 @@
 ---@field private _bufnr integer
 ---@field private _winid integer|nil
 ---@field private _win_opts bufsitter.scratch.win.opts
+---@field private _ext string|nil
+---@field private _force_quit boolean
+---@field private _on_attach fun(bufnr: integer)|nil
+---@field private _init_contents string[]|fun(): string[]|nil
 local Scratch = {}
 Scratch.__index = Scratch
 
@@ -37,6 +42,85 @@ local function resolve_dim(value, total)
     return math.floor(total * value)
   end
   return value
+end
+
+local function init_buf(self)
+  local bufnr = vim.api.nvim_create_buf(false, true)
+
+  local path = vim.fn.stdpath("data") .. "/bufsitter_" .. bufnr .. "." .. self._ext
+  vim.api.nvim_buf_set_name(bufnr, path)
+  vim.bo[bufnr].buftype = "acwrite"
+  vim.bo[bufnr].bufhidden = "hide"
+  local ft = vim.filetype.match({ filename = path })
+  if ft then
+    vim.bo[bufnr].filetype = ft
+  end
+
+  local lines = {}
+  local init_contents = self._init_contents
+  if type(init_contents) == "function" then
+    lines = init_contents()
+  elseif type(init_contents) == "table" then
+    lines = init_contents
+  end
+  if lines and #lines > 0 then
+    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+  end
+
+  self._bufnr = bufnr
+
+  local group =
+    vim.api.nvim_create_augroup("bufsitter_scratch_" .. bufnr, { clear = true })
+
+  -- Re-layout the floating window when the editor is resized (e.g. tmux pane resize).
+  vim.api.nvim_create_autocmd("VimResized", {
+    group = group,
+    callback = function()
+      if self:is_visible() then
+        self:show()
+      end
+    end,
+  })
+  -- Suppress unsaved-changes prompt: no-op :w and clear modified on QuitPre.
+  if self._force_quit then
+    vim.api.nvim_create_autocmd("BufWriteCmd", {
+      group = group,
+      buffer = bufnr,
+      callback = function()
+        vim.bo[bufnr].modified = false
+      end,
+    })
+    vim.api.nvim_create_autocmd("QuitPre", {
+      group = group,
+      callback = function()
+        if vim.api.nvim_buf_is_valid(bufnr) then
+          vim.bo[bufnr].modified = false
+        end
+      end,
+    })
+  end
+  -- Run on_attach once when the buffer first enters a window, so LSP and
+  -- treesitter can attach with a valid window context.
+  if type(self._on_attach) == "function" then
+    vim.api.nvim_create_autocmd("BufWinEnter", {
+      group = group,
+      buffer = bufnr,
+      once = true,
+      callback = function()
+        self._on_attach(bufnr)
+      end,
+    })
+  end
+
+  -- Clean up the augroup when the buffer is deleted.
+  vim.api.nvim_create_autocmd("BufDelete", {
+    group = group,
+    buffer = bufnr,
+    once = true,
+    callback = function()
+      pcall(vim.api.nvim_del_augroup_by_id, group)
+    end,
+  })
 end
 
 ---Creates a new scratch buffer, deep-merging `opts` over the global defaults.
@@ -56,58 +140,15 @@ end
 function Scratch.new(opts)
   opts = vim.tbl_deep_extend("force", require("bufsitter").config.scratch, opts or {})
 
-  local bufnr = vim.api.nvim_create_buf(false, true)
-  vim.bo[bufnr].filetype = opts.ft
-
-  local lines = {}
-  local init_contents = opts.init_contents
-  if type(init_contents) == "function" then
-    lines = init_contents()
-  elseif type(init_contents) == "table" then
-    lines = init_contents
-  end
-  if lines and #lines > 0 then
-    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
-  end
-
   local self = setmetatable({}, Scratch)
-  self._bufnr = bufnr
   self._winid = nil
   self._win_opts = opts.win or {}
+  self._ext = opts.ext
+  self._force_quit = opts.force_quit
+  self._on_attach = type(opts.on_attach) == "function" and opts.on_attach or nil
+  self._init_contents = opts.init_contents
 
-  local group =
-    vim.api.nvim_create_augroup("bufsitter_scratch_" .. bufnr, { clear = true })
-
-  -- Re-layout the floating window when the editor is resized (e.g. tmux pane resize).
-  vim.api.nvim_create_autocmd("VimResized", {
-    group = group,
-    callback = function()
-      if self:is_visible() then
-        self:show()
-      end
-    end,
-  })
-  -- Run on_attach once when the buffer first enters a window, so LSP and
-  -- treesitter can attach with a valid window context.
-  if type(opts.on_attach) == "function" then
-    vim.api.nvim_create_autocmd("BufWinEnter", {
-      group = group,
-      buffer = bufnr,
-      once = true,
-      callback = function()
-        opts.on_attach(bufnr)
-      end,
-    })
-  end
-  -- Clean up the augroup when the buffer is deleted.
-  vim.api.nvim_create_autocmd("BufDelete", {
-    group = group,
-    buffer = bufnr,
-    once = true,
-    callback = function()
-      pcall(vim.api.nvim_del_augroup_by_id, group)
-    end,
-  })
+  init_buf(self)
 
   return self
 end
@@ -123,7 +164,8 @@ function Scratch:bufnr()
   return self._bufnr
 end
 
----Returns true if the underlying buffer still exists.
+---Returns true if the underlying buffer still exists and is loaded.
+---An unloaded `nofile` buffer has lost its content and is treated as invalid.
 ---@return boolean
 ---@usage [[
 ---local Scratch = require("bufsitter.scratch")
@@ -134,6 +176,7 @@ end
 ---@usage ]]
 function Scratch:is_valid()
   return vim.api.nvim_buf_is_valid(self._bufnr)
+    and vim.api.nvim_buf_is_loaded(self._bufnr)
 end
 
 ---Returns true if the floating window is currently open.
@@ -152,9 +195,11 @@ end
 ---Opens the floating window. All of `width`, `height`, `row`, and `col` accept
 ---either an absolute integer or a 0–1 ratio relative to the editor size.
 ---`row` and `col` default to centered when omitted.
----Returns the window id, or nil if the buffer is invalid.
+---If the buffer was deleted externally (e.g. via `:bd`), it is recreated from
+---`init_contents` before the window is opened.
+---Returns the window id.
 ---@param win_opts? bufsitter.scratch.win.opts
----@return integer|nil
+---@return integer
 ---@usage [[
 ---local Scratch = require("bufsitter.scratch")
 ---local s = Scratch.new()
@@ -164,7 +209,7 @@ end
 ---@usage ]]
 function Scratch:show(win_opts)
   if not self:is_valid() then
-    return nil
+    init_buf(self)
   end
 
   local merged = vim.tbl_deep_extend("force", self._win_opts, win_opts or {})
