@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0](https://github.com/xvzc/bufsitter.nvim/compare/v0.1.0...v0.2.0) (2026-04-25)
+
+
+### Features
+
+* **scratch,ref:** add ext/force_quit options and ref hook support ([98aa8a2](https://github.com/xvzc/bufsitter.nvim/commit/98aa8a230d5fdd0c82a0430fdd73851451416111))
+
+
+### Bug Fixes
+
+* **scratch:** defer on_attach to BufWinEnter and close all windows on hide ([2bc2703](https://github.com/xvzc/bufsitter.nvim/commit/2bc2703be8c85a1594eac8e1d45d5e06bc47443e))
+
 ## [0.1.0](https://github.com/xvzc/bufsitter.nvim/compare/v0.0.0...v0.1.0) (2026-04-22)
 
 
